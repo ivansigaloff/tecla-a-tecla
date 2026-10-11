@@ -1,5 +1,5 @@
 // Tecla a Tecla: guarda la app para usarla sin conexión.
-const VERSION = 'tat-v3';
+const VERSION = 'tat-v4';
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png'];
 
 self.addEventListener('install', e => {

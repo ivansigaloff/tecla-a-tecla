@@ -163,6 +163,15 @@ kbd {
 .diffs i.on { background: color-mix(in srgb, var(--rh) 20%, var(--night)); color: var(--rh); }
 .opt label .ds { color: var(--rh); font-size: 0.8rem; letter-spacing: 0.08em; }
 .opt input:disabled + label { opacity: 0.4; cursor: not-allowed; }
+.card-wrap { position: relative; display: grid; }
+.del {
+  position: absolute; top: 8px; right: 8px;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--stage); color: var(--muted);
+  font-size: 0.75rem; font-weight: 700; padding: 3px 9px;
+}
+.del[data-armed] { color: var(--bad); border-color: var(--bad); }
+.import-msg { margin: -16px 0 0; padding: 10px 14px; border-radius: 12px; background: var(--stage); border: 1px solid var(--line); color: var(--text); }
 .stars { display: inline-flex; gap: 2px; }
 .stars svg { width: 16px; height: 16px; }
 .stars .on path { fill: var(--rh); }
@@ -331,8 +340,12 @@ dialog::backdrop { background: rgb(10 8 24 / 0.7); backdrop-filter: blur(4px); }
           Practicar
         </button>
         <button class="btn ghost" id="freeBtn" type="button">Piano libre</button>
+        <button class="btn ghost" id="importBtn" type="button">Importar MIDI</button>
+        <input type="file" id="midiFile" accept=".mid,.midi,audio/midi,audio/x-midi" hidden>
       </div>
     </div>
+
+    <p class="import-msg" id="importMsg" role="status" hidden></p>
 
     <div class="inputs">
       <h3>Cómo vas a tocar</h3>
@@ -459,9 +472,6 @@ const rpt = (tok, n) => Array(n).fill(tok).join(' ');
 const burst = (note, n) => rpt(note + ':.25', n - 1) + ' ' + note + ':.5';
 const SAND_A = [burst('B4', 5), 'R:.5', burst('B4', 7)].join(' ');
 const SAND_PHRASE = [SAND_A, burst('E5', 7), rpt('D5:.25', 6), 'A4:.25 A4:.25', SAND_A, burst('E5', 7), burst('B4', 5), 'R:.5'].join(' ');
-// Rush E: el martilleo de Mi en semicorcheas y su bajada
-const RUSH_A = [rpt('E5:.25', 16), rpt('E5:.25', 8), rpt('D5:.25', 4), rpt('C5:.25', 4), rpt('B4:.25', 8), rpt('C5:.25', 4), rpt('D5:.25', 4), 'E5:2 A4:2'].join(' ');
-const RUSH_B = [rpt('E5:.25', 16), rpt('E5:.25', 8), rpt('G5:.25', 4), rpt('F5:.25', 4), rpt('E5:.25', 8), rpt('D5:.25', 4), rpt('B4:.25', 4), 'A4:4'].join(' ');
 const SONGS = [
   { id: 'domi', title: 'Do, Re, Mi', sub: 'Primeros pasos con tres notas', level: 1, bpm: 80, meter: 4,
     rh: 'C4 C4 D4 D4 E4 E4 D4:2 C4 D4 E4 C4 D4:2 C4:2' },
@@ -493,9 +503,6 @@ const SONGS = [
   { id: 'sandstorm', title: 'Sandstorm', sub: 'Darude · riff principal', level: 3, bpm: 136, meter: 4,
     rh: SAND_PHRASE + ' ' + SAND_PHRASE,
     lh: rpt('B2:4 E3:2 D3:2 B2:4 E3:2 B2:2', 2) },
-  { id: 'rushe', title: 'Rush E', sub: 'Sheet Music Boss · arreglo simplificado', level: 3, bpm: 140, meter: 4,
-    rh: RUSH_A + ' ' + RUSH_B,
-    lh: 'A2:4 A2:2 F2:2 G2:2 E2:2 A2:2 E2:2 A2:4 C3:2 D3:2 E3:2 E2:2 A2:4' },
 ];
 // Versiones de cada canción
 const DIFFS = {
@@ -530,6 +537,12 @@ function parseTrack(str, hand, bpm) {
 }
 function songNotes(song, diff = 'normal') {
   const bpm = song.bpm * DIFFS[diff].tempo;
+  if (song.imported) {
+    const f = DIFFS[diff].tempo;
+    let n = song.data.notes.map(([midi, t, d, b, hand]) => ({ midi, t: t / f, d: Math.max(0.08, d / f - 0.03), b, hand }));
+    if (diff === 'easy') n = simplify(n, song, 60 / bpm);
+    return n.sort((a, b) => a.t - b.t || a.midi - b.midi);
+  }
   let n = parseTrack(song.rh, 'R', bpm);
   if (song.lh) n.push(...parseTrack(song.lh, 'L', bpm));
   if (diff === 'easy') n = simplify(n, song, 60 / bpm);
@@ -550,12 +563,91 @@ function simplify(notes, song, spb) {
     });
     return kept;
   };
-  const beatOf = n => Math.floor(n.t / spb + 1e-6);
-  const barOf = n => Math.floor((n.t / spb - (song.pickup || 0)) / song.meter + 1e-6);
+  const beat = n => n.b ?? n.t / spb;   // los MIDI importados traen su pulso real
+  const beatOf = n => Math.floor(beat(n) + 1e-6);
+  const barOf = n => Math.floor((beat(n) - (song.pickup || 0)) / song.meter + 1e-6);
   return [
     ...pick(notes.filter(n => n.hand === 'R'), beatOf, false, spb * 2),
     ...pick(notes.filter(n => n.hand === 'L'), barOf, true, spb * song.meter),
   ];
+}
+
+/* ================= Importar MIDI ================= */
+function parseMidiFile(buf) {
+  const v = new DataView(buf);
+  let p = 0;
+  const str = n => { let r = ''; for (let i = 0; i < n; i++) r += String.fromCharCode(v.getUint8(p + i)); p += n; return r; };
+  const u32 = () => { const x = v.getUint32(p); p += 4; return x; };
+  const u16 = () => { const x = v.getUint16(p); p += 2; return x; };
+  const vlq = () => { let x = 0, b; do { b = v.getUint8(p++); x = (x << 7) | (b & 0x7f); } while (b & 0x80); return x; };
+  if (buf.byteLength < 14 || str(4) !== 'MThd') throw new Error('no es un archivo MIDI');
+  const hlen = u32(); u16(); const ntrk = u16(), div = u16(); p += hlen - 6;
+  if (div & 0x8000) throw new Error('usa tiempo SMPTE, que no está soportado');
+  const tempos = [], sigs = [], raw = [];
+  for (let t = 0; t < ntrk && p + 8 <= buf.byteLength; t++) {
+    const id = str(4), len = u32(), end = Math.min(p + len, buf.byteLength);
+    if (id !== 'MTrk') { p = end; continue; }
+    let tick = 0, run = 0;
+    const open = new Map();
+    const close = (key, at) => { const o = open.get(key); open.delete(key); raw.push({ midi: key % 128, s: o, e: Math.max(at, o + 1), track: t }); };
+    while (p < end) {
+      tick += vlq();
+      let st = v.getUint8(p);
+      if (st & 0x80) p++; else st = run;
+      if (st === 0xFF) {
+        const type = v.getUint8(p++), l = vlq();
+        if (type === 0x51 && l === 3) tempos.push({ tick, us: (v.getUint8(p) << 16) | (v.getUint8(p + 1) << 8) | v.getUint8(p + 2) });
+        else if (type === 0x58 && l >= 2) sigs.push({ tick, num: v.getUint8(p), den: 2 ** v.getUint8(p + 1) });
+        p += l; continue;
+      }
+      if (st === 0xF0 || st === 0xF7) { p += vlq(); continue; }
+      if (!(st & 0x80)) throw new Error('el archivo está dañado');
+      run = st;
+      const type = st & 0xF0, ch = st & 0x0F;
+      const a = v.getUint8(p++), b = (type === 0xC0 || type === 0xD0) ? 0 : v.getUint8(p++);
+      if (ch === 9 || (type !== 0x80 && type !== 0x90)) continue;   // canal 10 = batería
+      const key = ch * 128 + a;
+      if (type === 0x90 && b > 0) { if (open.has(key)) close(key, tick); open.set(key, tick); }
+      else if (open.has(key)) close(key, tick);
+    }
+    for (const key of [...open.keys()]) close(key, tick);
+    p = end;
+  }
+  if (!raw.length) throw new Error('no tiene notas de piano');
+  // Mapa de tempo: ticks a segundos
+  tempos.sort((a, b) => a.tick - b.tick);
+  if (!tempos.length || tempos[0].tick > 0) tempos.unshift({ tick: 0, us: 500000 });
+  const seg = [];
+  let acc = 0;
+  tempos.forEach((tp, i) => {
+    if (i) acc += (tp.tick - tempos[i - 1].tick) * tempos[i - 1].us / div / 1e6;
+    seg.push({ tick: tp.tick, sec: acc, us: tp.us });
+  });
+  const sec = tick => { let k = seg.length - 1; while (k > 0 && seg[k].tick > tick) k--; return seg[k].sec + (tick - seg[k].tick) * seg[k].us / div / 1e6; };
+  // Manos: con varias pistas, la más aguda es la derecha; con una sola, se divide en el Do central
+  const tracks = new Map();
+  raw.forEach(n => { const tr = tracks.get(n.track) || { sum: 0, n: 0 }; tr.sum += n.midi; tr.n++; tracks.set(n.track, tr); });
+  const order = [...tracks.entries()].map(([id, tr]) => ({ id, avg: tr.sum / tr.n })).sort((a, b) => b.avg - a.avg);
+  const handOf = new Map();
+  if (order.length > 1) order.forEach((tr, i) => handOf.set(tr.id, i === 0 ? 'R' : i === order.length - 1 ? 'L' : tr.avg >= 60 ? 'R' : 'L'));
+  // La misma tecla dos veces en el mismo instante (pistas superpuestas) cuenta como una sola nota
+  raw.sort((a, b) => a.s - b.s || a.midi - b.midi);
+  const lastOn = new Map();
+  for (let i = 0; i < raw.length; i++) {
+    const n = raw[i], prev = lastOn.get(n.midi);
+    if (prev && n.s - prev.s <= div / 32) { prev.e = Math.max(prev.e, n.e); raw.splice(i--, 1); }
+    else lastOn.set(n.midi, n);
+  }
+  const firstTick = Math.min(...raw.map(n => n.s)), t0 = sec(firstTick);
+  const sig = sigs.sort((a, b) => a.tick - b.tick)[0] || { num: 4, den: 4 };
+  const notes = raw.sort((a, b) => a.s - b.s || a.midi - b.midi).map(n => {
+    const t = sec(n.s);
+    return [n.midi, +(t - t0).toFixed(4), +(sec(n.e) - t).toFixed(4), +((n.s - firstTick) / div).toFixed(4), order.length > 1 ? handOf.get(n.track) : n.midi >= 60 ? 'R' : 'L'];
+  });
+  const barTicks = div * sig.num * 4 / sig.den, lastTick = Math.max(...raw.map(n => n.e)), bars = [];
+  for (let k = Math.ceil(firstTick / barTicks); k * barTicks <= lastTick && bars.length < 2000; k++) bars.push(+(sec(k * barTicks) - t0).toFixed(4));
+  const startTempo = tempos.filter(x => x.tick <= firstTick).pop() || tempos[0];
+  return { notes, bars, bpm: Math.round(60e6 / startTempo.us), meter: sig.num };
 }
 
 /* ================= Almacenamiento ================= */
@@ -565,6 +657,10 @@ function load(key, fallback) {
 function save(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }
 const settings = Object.assign({ labels: 'solf', volume: 0.8 }, load('tat-settings-v1', {}));
 const progress = load('tat-progress-v1', {});
+const imports = load('tat-imports-v1', []);
+const allSongs = () => [...SONGS, ...imports];
+function saveImports() { try { localStorage.setItem('tat-imports-v1', JSON.stringify(imports)); return true; } catch { return false; } }
+const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 for (const k in progress) if (typeof progress[k].stars === 'number') progress[k] = { normal: progress[k] };  // formato anterior
 const diffStars = (id, d) => ((progress[id] || {})[d] || {}).stars || 0;
 const bestStars = id => Math.max(0, ...Object.keys(DIFFS).map(d => diffStars(id, d)));
@@ -894,7 +990,8 @@ const game = {
       this.endT = Math.max(...this.notes.map(n => n.t + n.d));
       const spb = 60 / (song.bpm * DIFFS[this.diff].tempo);
       this.bars = [];
-      for (let b = song.pickup || 0; b * spb <= this.endT + 0.01; b += song.meter) this.bars.push(b * spb);
+      if (song.imported) this.bars = song.data.bars.map(x => x / DIFFS[this.diff].tempo);
+      else for (let b = song.pickup || 0; b * spb <= this.endT + 0.01; b += song.meter) this.bars.push(b * spb);
       // Rango del teclado: desde el Do bajo la nota más grave, al menos dos octavas
       const mn = Math.min(...this.notes.map(n => n.midi)), mx = Math.max(...this.notes.map(n => n.midi));
       this.lo = 12 * Math.floor(mn / 12);
@@ -1073,7 +1170,7 @@ const game = {
     $('#resAgain').textContent = 'Repetir';
     $('#resAgain').onclick = () => this.start(this.song, { mode: this.mode, hands: this.hands, speed: this.speed, diff: this.diff });
     const idx = SONGS.indexOf(this.song);
-    $('#resNext').hidden = idx >= SONGS.length - 1;
+    $('#resNext').hidden = idx < 0 || idx >= SONGS.length - 1;
     ov.hidden = false;
     $('#resAgain').focus();
     renderHome();
@@ -1415,6 +1512,21 @@ function rollSvg(song) {
 function renderHome() {
   let total = 0;
   const html = [];
+  if (imports.length) {
+    html.push(`<div class="level"><div class="level-head"><h3>Tus canciones · <span>MIDI importados</span></h3></div><div class="grid">`);
+    for (const s of imports) {
+      const chips = Object.entries(DIFFS).map(([d, v]) => `<i class="${diffStars(s.id, d) ? 'on' : ''}">${v.name}</i>`).join('');
+      html.push(`<div class="card-wrap"><button class="card" type="button" data-id="${s.id}">
+        ${rollSvg(s)}
+        <div class="body"><h4>${esc(s.title)}</h4><span class="sub">${esc(s.sub)}</span>
+          <div class="diffs">${chips}</div>
+          <div class="meta"><span class="hands"><i style="background:${C.rh}"></i>${s.lh ? `<i style="background:${C.lh}"></i>Dos manos` : 'Mano derecha'} · ♩ ${s.bpm}</span>
+          <span class="stars">${[0, 1, 2].map(i => starSvg(i < bestStars(s.id))).join('')}</span></div>
+        </div></button>
+        <button class="del" type="button" data-del="${s.id}" aria-label="Quitar ${esc(s.title)}">Quitar</button></div>`);
+    }
+    html.push('</div></div>');
+  }
   for (const lvl of [1, 2, 3]) {
     const songs = SONGS.filter(s => s.level === lvl);
     const got = songs.reduce((a, s) => a + bestStars(s.id), 0);
@@ -1446,16 +1558,51 @@ function renderHome() {
   }
 }
 $('#levels').addEventListener('click', e => {
+  const del = e.target.closest('.del');
+  if (del) {
+    // Primer toque pide confirmación, el segundo quita la canción
+    if (del.dataset.armed) {
+      const i = imports.findIndex(s => s.id === del.dataset.del);
+      if (i >= 0) { imports.splice(i, 1); saveImports(); }
+      renderHome();
+    } else {
+      del.dataset.armed = '1'; del.textContent = '¿Quitar?';
+      setTimeout(() => { if (del.isConnected) { delete del.dataset.armed; del.textContent = 'Quitar'; } }, 3000);
+    }
+    return;
+  }
   const c = e.target.closest('.card'); if (!c) return;
   ensureAudio();
-  openSetup(SONGS.find(s => s.id === c.dataset.id));
+  openSetup(allSongs().find(s => s.id === c.dataset.id));
+});
+$('#importBtn').onclick = () => $('#midiFile').click();
+$('#midiFile').addEventListener('change', async e => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  const msg = $('#importMsg');
+  try {
+    const parsed = parseMidiFile(await f.arrayBuffer());
+    const title = f.name.replace(/\.(mid|midi)$/i, '').replace(/[_]+/g, ' ').trim() || 'Canción importada';
+    const song = { id: 'imp-' + Date.now().toString(36), title, sub: 'MIDI importado · ' + parsed.notes.length + ' notas', level: 0,
+      bpm: parsed.bpm, meter: parsed.meter, imported: true, lh: parsed.notes.some(n => n[4] === 'L'), rh: '', data: { notes: parsed.notes, bars: parsed.bars } };
+    imports.push(song);
+    const saved = saveImports();
+    msg.textContent = saved ? `"${title}" se agregó a Tus canciones.` : `"${title}" es muy grande para guardarla; está disponible hasta que cierres la app.`;
+    msg.hidden = false;
+    renderHome();
+    openSetup(song);
+  } catch (err) {
+    msg.textContent = `No se pudo abrir "${f.name}": ${err.message}. Prueba con otro archivo .mid.`;
+    msg.hidden = false;
+  }
 });
 
 let setupSong = null;
 function openSetup(song) {
   setupSong = song;
   $('#suTitle').textContent = song.title;
-  $('#suSub').textContent = `${song.sub} · Nivel ${song.level} · ♩ ${song.bpm}`;
+  $('#suSub').textContent = song.imported ? `${song.sub} · ♩ ${song.bpm}` : `${song.sub} · Nivel ${song.level} · ♩ ${song.bpm}`;
   $('#handsField').hidden = !song.lh;
   const ids = { easy: 'Easy', normal: 'Normal', hard: 'Hard' };
   for (const d in ids) $('#ds' + ids[d]).textContent = '★'.repeat(diffStars(song.id, d)) + '☆'.repeat(3 - diffStars(song.id, d));

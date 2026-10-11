@@ -7,7 +7,8 @@ Aprende piano con notas que caen sobre el teclado, al estilo Simply Piano / Synt
 - **Aprender:** la canción espera a que toques la nota correcta.
 - **Desafío:** a tempo, con puntos y racha.
 - **Escuchar:** la canción se toca sola.
-- 12 canciones en 3 niveles, cada una en versión Fácil, Normal y Difícil.
+- 11 canciones en 3 niveles, cada una en versión Fácil, Normal y Difícil.
+- **Importar MIDI:** carga cualquier archivo .mid y tócalo con notas que caen.
 - Práctica por manos y velocidad ajustable.
 
 ## En una tablet Android con teclado USB-C
