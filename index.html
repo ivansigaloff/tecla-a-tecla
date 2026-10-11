@@ -158,6 +158,11 @@ kbd {
 .card h4 { font: 700 1.08rem/1.2 var(--display); margin: 0; }
 .card .sub { color: var(--muted); font-size: 0.85rem; }
 .card .meta { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.diffs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.diffs i { font-style: normal; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.02em; padding: 1px 7px; border-radius: 6px; background: var(--night); color: var(--muted); }
+.diffs i.on { background: color-mix(in srgb, var(--rh) 20%, var(--night)); color: var(--rh); }
+.opt label .ds { color: var(--rh); font-size: 0.8rem; letter-spacing: 0.08em; }
+.opt input:disabled + label { opacity: 0.4; cursor: not-allowed; }
 .stars { display: inline-flex; gap: 2px; }
 .stars svg { width: 16px; height: 16px; }
 .stars .on path { fill: var(--rh); }
@@ -417,6 +422,14 @@ dialog::backdrop { background: rgb(10 8 24 / 0.7); backdrop-filter: blur(4px); }
         <div class="opt"><input type="radio" name="mode" id="mListen" value="listen"><label for="mListen"><b>Escuchar</b><span>Mira y oye cómo suena antes de tocar</span></label></div>
       </div>
     </fieldset>
+    <fieldset>
+      <legend>Versión</legend>
+      <div class="opts row">
+        <div class="opt"><input type="radio" name="diff" id="dEasy" value="easy"><label for="dEasy"><b>Fácil</b><span>Ritmo simple · 85%</span><span class="ds" id="dsEasy"></span></label></div>
+        <div class="opt"><input type="radio" name="diff" id="dNormal" value="normal" checked><label for="dNormal"><b>Normal</b><span>Como está escrita</span><span class="ds" id="dsNormal"></span></label></div>
+        <div class="opt"><input type="radio" name="diff" id="dHard" value="hard"><label for="dHard"><b>Difícil</b><span id="dHardDesc">Ambas manos · 115%</span><span class="ds" id="dsHard"></span></label></div>
+      </div>
+    </fieldset>
     <fieldset id="handsField">
       <legend>Manos</legend>
       <div class="opts row">
@@ -446,6 +459,9 @@ const rpt = (tok, n) => Array(n).fill(tok).join(' ');
 const burst = (note, n) => rpt(note + ':.25', n - 1) + ' ' + note + ':.5';
 const SAND_A = [burst('B4', 5), 'R:.5', burst('B4', 7)].join(' ');
 const SAND_PHRASE = [SAND_A, burst('E5', 7), rpt('D5:.25', 6), 'A4:.25 A4:.25', SAND_A, burst('E5', 7), burst('B4', 5), 'R:.5'].join(' ');
+// Rush E: el martilleo de Mi en semicorcheas y su bajada
+const RUSH_A = [rpt('E5:.25', 16), rpt('E5:.25', 8), rpt('D5:.25', 4), rpt('C5:.25', 4), rpt('B4:.25', 8), rpt('C5:.25', 4), rpt('D5:.25', 4), 'E5:2 A4:2'].join(' ');
+const RUSH_B = [rpt('E5:.25', 16), rpt('E5:.25', 8), rpt('G5:.25', 4), rpt('F5:.25', 4), rpt('E5:.25', 8), rpt('D5:.25', 4), rpt('B4:.25', 4), 'A4:4'].join(' ');
 const SONGS = [
   { id: 'domi', title: 'Do, Re, Mi', sub: 'Primeros pasos con tres notas', level: 1, bpm: 80, meter: 4,
     rh: 'C4 C4 D4 D4 E4 E4 D4:2 C4 D4 E4 C4 D4:2 C4:2' },
@@ -477,7 +493,16 @@ const SONGS = [
   { id: 'sandstorm', title: 'Sandstorm', sub: 'Darude · riff principal', level: 3, bpm: 136, meter: 4,
     rh: SAND_PHRASE + ' ' + SAND_PHRASE,
     lh: rpt('B2:4 E3:2 D3:2 B2:4 E3:2 B2:2', 2) },
+  { id: 'rushe', title: 'Rush E', sub: 'Sheet Music Boss · arreglo simplificado', level: 3, bpm: 140, meter: 4,
+    rh: RUSH_A + ' ' + RUSH_B,
+    lh: 'A2:4 A2:2 F2:2 G2:2 E2:2 A2:2 E2:2 A2:4 C3:2 D3:2 E3:2 E2:2 A2:4' },
 ];
+// Versiones de cada canción
+const DIFFS = {
+  easy:   { name: 'Fácil',   tempo: 0.85, win: 0.25 },
+  normal: { name: 'Normal',  tempo: 1,    win: 0.2 },
+  hard:   { name: 'Difícil', tempo: 1.15, win: 0.13 },
+};
 const LEVELS = { 1: 'Principiante', 2: 'Fácil', 3: 'Intermedio' };
 
 const PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
@@ -503,10 +528,34 @@ function parseTrack(str, hand, bpm) {
   }
   return out;
 }
-function songNotes(song) {
-  const n = parseTrack(song.rh, 'R', song.bpm);
-  if (song.lh) n.push(...parseTrack(song.lh, 'L', song.bpm));
+function songNotes(song, diff = 'normal') {
+  const bpm = song.bpm * DIFFS[diff].tempo;
+  let n = parseTrack(song.rh, 'R', bpm);
+  if (song.lh) n.push(...parseTrack(song.lh, 'L', bpm));
+  if (diff === 'easy') n = simplify(n, song, 60 / bpm);
   return n.sort((a, b) => a.t - b.t || a.midi - b.midi);
+}
+// Versión fácil: la derecha toca una nota por pulso (la más aguda) y la izquierda una por compás (la más grave)
+function simplify(notes, song, spb) {
+  const pick = (list, keyOf, lowest, cap) => {
+    const first = new Map();
+    for (const n of list) {
+      const k = keyOf(n), cur = first.get(k);
+      if (!cur || n.t < cur.t - 1e-6 || (Math.abs(n.t - cur.t) < 1e-6 && (lowest ? n.midi < cur.midi : n.midi > cur.midi))) first.set(k, n);
+    }
+    const kept = [...first.values()].sort((a, b) => a.t - b.t);
+    kept.forEach((n, i) => {
+      const nx = kept[i + 1];
+      if (nx) n.d = Math.max(0.08, Math.min(nx.t - n.t - 0.05, Math.max(n.d, cap)));
+    });
+    return kept;
+  };
+  const beatOf = n => Math.floor(n.t / spb + 1e-6);
+  const barOf = n => Math.floor((n.t / spb - (song.pickup || 0)) / song.meter + 1e-6);
+  return [
+    ...pick(notes.filter(n => n.hand === 'R'), beatOf, false, spb * 2),
+    ...pick(notes.filter(n => n.hand === 'L'), barOf, true, spb * song.meter),
+  ];
 }
 
 /* ================= Almacenamiento ================= */
@@ -516,6 +565,9 @@ function load(key, fallback) {
 function save(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }
 const settings = Object.assign({ labels: 'solf', volume: 0.8 }, load('tat-settings-v1', {}));
 const progress = load('tat-progress-v1', {});
+for (const k in progress) if (typeof progress[k].stars === 'number') progress[k] = { normal: progress[k] };  // formato anterior
+const diffStars = (id, d) => ((progress[id] || {})[d] || {}).stars || 0;
+const bestStars = id => Math.max(0, ...Object.keys(DIFFS).map(d => diffStars(id, d)));
 const noteName = (m, oct) => (settings.labels === 'letters' ? LETT : SOLF)[((m % 12) + 12) % 12] + (oct ? Math.floor(m / 12) - 1 : '');
 
 /* ================= Sonido ================= */
@@ -801,10 +853,9 @@ const C = {};
 const FONT = css.getPropertyValue('--body').trim();
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const LOOK = 2.4;           // segundos de canción visibles sobre la tira de fieltro
-const HIT_WIN = 0.2;        // ventana de acierto en el modo Desafío (segundos reales)
 
 const game = {
-  song: null, mode: 'wait', hands: 'R', speed: 1, free: false,
+  song: null, mode: 'wait', hands: 'R', speed: 1, diff: 'normal', win: 0.2, free: false,
   notes: [], groups: [], gi: 0, auto: [], ai: 0, act: [], mi: 0,
   t: 0, endT: 0, bars: [], paused: false, ended: false, waiting: false,
   lo: 48, hi: 84, stats: null,
@@ -829,7 +880,8 @@ const game = {
       $('#progWrap').hidden = true;
     } else {
       const hands = this.hands;
-      this.notes = songNotes(song).map(n => ({ ...n, state: 'pending', active: this.mode !== 'listen' && (hands === 'B' || n.hand === hands || !song.lh) }));
+      this.win = DIFFS[this.diff].win;   // ventana de acierto en Desafío (segundos reales)
+      this.notes = songNotes(song, this.diff).map(n => ({ ...n, state: 'pending', active: this.mode !== 'listen' && (hands === 'B' || n.hand === hands || !song.lh) }));
       this.act = this.notes.filter(n => n.active);
       this.auto = this.notes.filter(n => !n.active);
       this.groups = [];
@@ -840,7 +892,7 @@ const game = {
       }
       this.gi = 0; this.ai = 0; this.mi = 0;
       this.endT = Math.max(...this.notes.map(n => n.t + n.d));
-      const spb = 60 / song.bpm;
+      const spb = 60 / (song.bpm * DIFFS[this.diff].tempo);
       this.bars = [];
       for (let b = song.pickup || 0; b * spb <= this.endT + 0.01; b += song.meter) this.bars.push(b * spb);
       // Rango del teclado: desde el Do bajo la nota más grave, al menos dos octavas
@@ -861,7 +913,7 @@ const game = {
       this.t = -LOOK * 0.85;
       $('#hudTitle').textContent = song.title;
       const handTxt = !song.lh ? '' : this.hands === 'B' ? ' · ambas manos' : this.hands === 'R' ? ' · mano derecha' : ' · mano izquierda';
-      $('#hudMode').textContent = { wait: 'Aprender', play: 'Desafío', listen: 'Escuchar' }[this.mode] + handTxt + (this.speed !== 1 ? ' · ' + Math.round(this.speed * 100) + '%' : '');
+      $('#hudMode').textContent = { wait: 'Aprender', play: 'Desafío', listen: 'Escuchar' }[this.mode] + ' · ' + DIFFS[this.diff].name + handTxt + (this.speed !== 1 ? ' · ' + Math.round(this.speed * 100) + '%' : '');
       $('#progWrap').hidden = false;
     }
     showScreen('play');
@@ -901,7 +953,7 @@ const game = {
     }
     // Notas no tocadas a tiempo (Desafío)
     if (this.mode === 'play') {
-      while (this.mi < this.act.length && this.t > this.act[this.mi].t + HIT_WIN * this.speed) {
+      while (this.mi < this.act.length && this.t > this.act[this.mi].t + this.win * this.speed) {
         const n = this.act[this.mi++];
         if (n.state === 'pending') {
           n.state = 'missed';
@@ -947,7 +999,7 @@ const game = {
         if (err < bestErr) { bestErr = err; best = n; }
         if (n.t > this.t + 1) break;
       }
-      if (best && bestErr <= HIT_WIN) {
+      if (best && bestErr <= this.win) {
         best.state = 'hit'; s.hit++; s.streak++; s.best = Math.max(s.best, s.streak);
         const perfect = bestErr < 0.08;
         if (perfect) s.perfect++; else s.good++;
@@ -994,7 +1046,7 @@ const game = {
       $('#resSub').textContent = 'Ya sabes cómo suena. Pruébala en modo Aprender: la canción te esperará en cada nota.';
       $('#resGrid').innerHTML = '';
       $('#resAgain').textContent = 'Aprender esta canción';
-      $('#resAgain').onclick = () => this.start(this.song, { mode: 'wait', hands: this.hands, speed: this.speed });
+      $('#resAgain').onclick = () => this.start(this.song, { mode: 'wait', hands: this.hands, speed: this.speed, diff: this.diff });
       ov.hidden = false;
       return;
     }
@@ -1002,12 +1054,16 @@ const game = {
     if (this.mode === 'wait') acc = total ? total / (total + s.wrong * 0.5) : 0;
     else acc = total ? (s.perfect + s.good * 0.75) / (total + s.wrong * 0.25) : 0;
     const stars = acc >= 0.9 ? 3 : acc >= 0.75 ? 2 : acc >= 0.5 ? 1 : 0;
-    const prevBest = progress[this.song.id] || { stars: 0, acc: 0 };
-    progress[this.song.id] = { stars: Math.max(prevBest.stars, stars), acc: Math.max(prevBest.acc, acc) };
+    const rec = progress[this.song.id] || (progress[this.song.id] = {});
+    const prevBest = rec[this.diff] || { stars: 0, acc: 0 };
+    rec[this.diff] = { stars: Math.max(prevBest.stars, stars), acc: Math.max(prevBest.acc, acc) };
     save('tat-progress-v1', progress);
     $('#resStars').innerHTML = [0, 1, 2].map(i => starSvg(i < stars)).join('');
     $('#resTitle').textContent = ['Sigue practicando', 'Vas bien', '¡Muy bien!', '¡Impecable!'][stars];
-    const tip = stars === 3 ? (this.mode === 'wait' ? 'Ya la dominas. Prueba el modo Desafío, a tempo.' : (this.speed < 1 ? 'Sube la velocidad para el siguiente reto.' : 'Lista para la siguiente canción.'))
+    const tip = stars === 3 ? (this.mode === 'wait' ? 'Ya la dominas. Prueba el modo Desafío, a tempo.'
+        : this.diff === 'easy' ? 'Lista para la versión Normal.'
+        : this.diff === 'normal' ? 'Atrévete con la versión Difícil.'
+        : this.speed < 1 ? 'Sube la velocidad para el siguiente reto.' : 'Dominaste la versión más difícil.')
       : stars >= 1 ? 'Repítela una vez más; cada vuelta sale mejor.' : 'Baja la velocidad o vuelve al modo Aprender.';
     $('#resSub').textContent = tip + (stars > prevBest.stars && prevBest.stars > 0 ? ' Nuevo récord.' : '');
     const cells = this.mode === 'wait'
@@ -1015,7 +1071,7 @@ const game = {
       : [['Puntos', s.points.toLocaleString('es')], ['Precisión', Math.round(acc * 100) + '%'], ['Perfectas', s.perfect + '/' + total], ['Falladas', s.miss + s.wrong]];
     $('#resGrid').innerHTML = cells.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('');
     $('#resAgain').textContent = 'Repetir';
-    $('#resAgain').onclick = () => this.start(this.song, { mode: this.mode, hands: this.hands, speed: this.speed });
+    $('#resAgain').onclick = () => this.start(this.song, { mode: this.mode, hands: this.hands, speed: this.speed, diff: this.diff });
     const idx = SONGS.indexOf(this.song);
     $('#resNext').hidden = idx >= SONGS.length - 1;
     ov.hidden = false;
@@ -1361,14 +1417,16 @@ function renderHome() {
   const html = [];
   for (const lvl of [1, 2, 3]) {
     const songs = SONGS.filter(s => s.level === lvl);
-    const got = songs.reduce((a, s) => a + ((progress[s.id] || {}).stars || 0), 0);
+    const got = songs.reduce((a, s) => a + bestStars(s.id), 0);
     total += got;
     html.push(`<div class="level"><div class="level-head"><h3>Nivel ${lvl} · <span>${LEVELS[lvl]}</span></h3><span class="stat" style="color:var(--muted);font-size:.85rem">${got} / ${songs.length * 3} ★</span></div><div class="grid">`);
     for (const s of songs) {
-      const p = progress[s.id] || { stars: 0 };
+      const p = { stars: bestStars(s.id) };
+      const chips = Object.entries(DIFFS).map(([d, v]) => `<i class="${diffStars(s.id, d) ? 'on' : ''}" title="${v.name}: ${diffStars(s.id, d)} de 3 estrellas">${v.name}</i>`).join('');
       html.push(`<button class="card" type="button" data-id="${s.id}">
         ${rollSvg(s)}
         <div class="body"><h4>${s.title}</h4><span class="sub">${s.sub}</span>
+          <div class="diffs">${chips}</div>
           <div class="meta"><span class="hands"><i style="background:${C.rh}"></i>${s.lh ? `<i style="background:${C.lh}"></i>Dos manos` : 'Mano derecha'} · ♩ ${s.bpm}</span>
           <span class="stars" aria-label="${p.stars} de 3 estrellas">${[0, 1, 2].map(i => starSvg(i < p.stars)).join('')}</span></div>
         </div></button>`);
@@ -1378,7 +1436,7 @@ function renderHome() {
   $('#levels').innerHTML = html.join('');
   $('#levels').style.display = 'grid'; $('#levels').style.gap = '28px';
   $('#tallyNum').textContent = `${total} / ${SONGS.length * 3}`;
-  const next = SONGS.find(s => !(progress[s.id] || {}).stars) || SONGS.find(s => (progress[s.id] || {}).stars < 3);
+  const next = SONGS.find(s => !bestStars(s.id)) || SONGS.find(s => bestStars(s.id) < 3);
   $('#nextBtn').hidden = !next;
   if (!next) { $('#nextTitle').textContent = '¡Todas las canciones con tres estrellas!'; $('#nextSub').textContent = 'Repite tus favoritas a más velocidad o improvisa en el piano libre.'; }
   if (next) {
@@ -1399,14 +1457,29 @@ function openSetup(song) {
   $('#suTitle').textContent = song.title;
   $('#suSub').textContent = `${song.sub} · Nivel ${song.level} · ♩ ${song.bpm}`;
   $('#handsField').hidden = !song.lh;
+  const ids = { easy: 'Easy', normal: 'Normal', hard: 'Hard' };
+  for (const d in ids) $('#ds' + ids[d]).textContent = '★'.repeat(diffStars(song.id, d)) + '☆'.repeat(3 - diffStars(song.id, d));
+  $('#dHardDesc').textContent = song.lh ? 'Ambas manos · 115%' : 'A 115%, más exigente';
+  const d = settings.diff && DIFFS[settings.diff] ? settings.diff : 'normal';
+  $('#d' + ids[d]).checked = true;
+  syncHands();
   $('#setup').showModal();
 }
+// En Difícil se tocan siempre las dos manos
+function syncHands() {
+  const hard = $('#dHard').checked && setupSong && setupSong.lh;
+  if (hard) $('#hB').checked = true;
+  $('#hR').disabled = $('#hL').disabled = !!hard;
+}
+document.querySelectorAll('input[name="diff"]').forEach(r => r.addEventListener('change', syncHands));
 $('#speed').addEventListener('input', e => { $('#speedOut').textContent = e.target.value + '%'; });
 $('#setupForm').addEventListener('submit', e => {
   if (e.submitter && e.submitter.value === 'start') {
     ensureAudio();
     const f = new FormData(e.target);
-    const opts = { mode: f.get('mode'), hands: setupSong.lh ? f.get('hands') : 'R', speed: +$('#speed').value / 100 };
+    const diff = f.get('diff') || 'normal';
+    settings.diff = diff; save('tat-settings-v1', settings);
+    const opts = { mode: f.get('mode'), hands: !setupSong.lh ? 'R' : diff === 'hard' ? 'B' : f.get('hands'), speed: +$('#speed').value / 100, diff };
     setTimeout(() => game.start(setupSong, opts), 0);
   }
 });
@@ -1429,7 +1502,7 @@ $('#pauseBtn').onclick = () => game.togglePause();
 $('#fsBtn').hidden = !document.documentElement.requestFullscreen || matchMedia('(display-mode: fullscreen)').matches;
 $('#fsBtn').onclick = toggleFullscreen;
 $('#resumeBtn').onclick = () => game.togglePause();
-$('#restartBtn').onclick = () => game.start(game.song, { mode: game.mode, hands: game.hands, speed: game.speed });
+$('#restartBtn').onclick = () => game.start(game.song, { mode: game.mode, hands: game.hands, speed: game.speed, diff: game.diff });
 $('#resNext').onclick = () => {
   const s = SONGS[SONGS.indexOf(game.song) + 1];
   if (s) { showScreen('home'); renderHome(); openSetup(s); }
