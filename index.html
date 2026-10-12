@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Atkinson+Hyperlegible:wght@400;700&family=Noto+Music&display=swap">
 <style>
 /* Layout: biblioteca en rejilla sobre un escenario nocturno; al tocar, pantalla completa con notas que caen sobre un teclado de marfil con su tira de fieltro rojo. */
 :root {
@@ -29,6 +29,12 @@
   --lh: #4fd1c5;
   --good: #7ddc8f;
   --bad: #ff6b7a;
+  --paper: #f7f2e7;
+  --ink: #241d38;
+  --rh-ink: #c96f00;
+  --lh-ink: #0d8a80;
+  --good-ink: #2a9a4c;
+  --bad-ink: #d33a4e;
   --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
   --body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
   color-scheme: dark;
@@ -357,6 +363,13 @@ dialog::backdrop { background: rgb(10 8 24 / 0.7); backdrop-filter: blur(4px); }
           <div class="seg" role="group" aria-label="Nombres de las notas">
             <button type="button" id="lblSolf" aria-pressed="true">Do Re Mi</button>
             <button type="button" id="lblLet" aria-pressed="false">C D E</button>
+            <button type="button" id="lblNone" aria-pressed="false">Ocultar</button>
+          </div>
+        </div>
+        <div class="chip"><b>Vista</b>
+          <div class="seg" role="group" aria-label="Cómo se muestran las notas">
+            <button type="button" id="viewStaff" aria-pressed="true">Pentagrama</button>
+            <button type="button" id="viewFall" aria-pressed="false">Notas que caen</button>
           </div>
         </div>
         <div class="chip"><label for="vol"><b>Volumen</b></label><input type="range" id="vol" min="0" max="1" step="0.05" value="0.8"></div>
@@ -379,6 +392,9 @@ dialog::backdrop { background: rgb(10 8 24 / 0.7); backdrop-filter: blur(4px); }
     <div class="stat secondary" id="stat2"></div>
     <div class="oct" id="octBox"><button type="button" id="octDown" aria-label="Bajar una octava">−</button><span id="octLbl">Oct 0</span><button type="button" id="octUp" aria-label="Subir una octava">+</button></div>
     <span class="midi-pill" id="hudMidi" hidden>MIDI</span>
+    <button class="icon-btn" id="viewBtn" type="button" aria-label="Cambiar a notas que caen" title="Cambiar vista">
+      <svg id="viewIcon" width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"></svg>
+    </button>
     <button class="icon-btn" id="fsBtn" type="button" aria-label="Pantalla completa">
       <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
@@ -655,7 +671,7 @@ function load(key, fallback) {
   try { const v = JSON.parse(localStorage.getItem(key)); return v ?? fallback; } catch { return fallback; }
 }
 function save(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }
-const settings = Object.assign({ labels: 'solf', volume: 0.8 }, load('tat-settings-v1', {}));
+const settings = Object.assign({ labels: 'solf', volume: 0.8, view: 'staff', showNames: true }, load('tat-settings-v1', {}));
 const progress = load('tat-progress-v1', {});
 const imports = load('tat-imports-v1', []);
 const allSongs = () => [...SONGS, ...imports];
@@ -945,7 +961,14 @@ const $ = s => document.querySelector(s);
 const cv = $('#cv'), ctx = cv.getContext('2d');
 const css = getComputedStyle(document.documentElement);
 const C = {};
-['night', 'stage', 'panel', 'line', 'text', 'muted', 'felt', 'ivory', 'ebony', 'rh', 'lh', 'good', 'bad'].forEach(k => C[k] = css.getPropertyValue('--' + k).trim());
+['night', 'stage', 'panel', 'line', 'text', 'muted', 'felt', 'ivory', 'ebony', 'rh', 'lh', 'good', 'bad', 'paper', 'ink'].forEach(k => C[k] = css.getPropertyValue('--' + k).trim());
+C.rhInk = css.getPropertyValue('--rh-ink').trim(); C.lhInk = css.getPropertyValue('--lh-ink').trim();
+C.goodInk = css.getPropertyValue('--good-ink').trim(); C.badInk = css.getPropertyValue('--bad-ink').trim();
+// sobre el papel del pentagrama los colores claros no se leen: se usan sus versiones en tinta
+const inkify = c => ({ [C.good]: C.goodInk, [C.bad]: C.badInk, [C.text]: C.ink, [C.rh]: C.rhInk, [C.lh]: C.lhInk, [C.muted]: C.ink })[c] || c;
+const MUSIC_FONT = '"Noto Music", "Segoe UI Symbol", "Bravura", serif';
+let musicFontReady = false;
+if (document.fonts && document.fonts.load) document.fonts.load('40px "Noto Music"', '\u{1D11E}\u{1D122}').then(f => { musicFontReady = f.length > 0; }).catch(() => {});
 const FONT = css.getPropertyValue('--body').trim();
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const LOOK = 2.4;           // segundos de canción visibles sobre la tira de fieltro
@@ -987,6 +1010,16 @@ const game = {
         else this.groups.push({ t: n.t, notes: [n] });
       }
       this.gi = 0; this.ai = 0; this.mi = 0;
+      // Separación horizontal del pentagrama según lo juntas que vienen las notas (en espacios por segundo)
+      const iois = [];
+      for (const hand of ['R', 'L']) {
+        const ts = [...new Set(this.notes.filter(n => n.hand === hand).map(n => Math.round(n.t * 100)))].sort((a, b) => a - b);
+        for (let i = 1; i < ts.length; i++) if (ts[i] - ts[i - 1] >= 3) iois.push((ts[i] - ts[i - 1]) / 100);
+      }
+      iois.sort((a, b) => a - b);
+      const tight = iois.length ? iois[Math.floor(iois.length * 0.1)] : 0.5;
+      this.staffSpacing = Math.max(6, Math.min(26, 2.6 / tight));
+      this.spb = 60 / (song.bpm * DIFFS[this.diff].tempo);
       this.endT = Math.max(...this.notes.map(n => n.t + n.d));
       const spb = 60 / (song.bpm * DIFFS[this.diff].tempo);
       this.bars = [];
@@ -1188,9 +1221,19 @@ function resize() {
   const whites = [];
   for (let m = game.lo; m <= game.hi; m++) if (!isBlack(m)) whites.push(m);
   L.ww = L.W / whites.length;
-  L.kh = Math.max(Math.min(L.H * 0.3, L.ww * 5.2, 230), Math.min(120, L.H * 0.35));
+  const staffView = settings.view === 'staff';
+  L.kh = staffView ? Math.max(Math.min(L.H * 0.26, L.ww * 4.6, 190), Math.min(96, L.H * 0.3))
+                   : Math.max(Math.min(L.H * 0.3, L.ww * 5.2, 230), Math.min(120, L.H * 0.35));
   L.hitY = L.H - L.kh;
   L.pps = (L.hitY - 12) / LOOK;
+  // Doble pentagrama: 5 espacios arriba, sol, 5 de separación, fa, 5 abajo (23 espacios en total)
+  const area = L.hitY - 10;
+  L.ls = Math.max(6, Math.min(20, area / 23));
+  L.paperTop = Math.max(4, (area - 23 * L.ls) / 2);
+  L.tTop = L.paperTop + 5 * L.ls; L.tBot = L.tTop + 4 * L.ls;
+  L.bTop = L.tBot + 5 * L.ls; L.bBot = L.bTop + 4 * L.ls;
+  L.clefW = L.ls * 5.2;
+  L.cursorX = Math.min(L.W * 0.3, L.clefW + L.ls * 4);
   L.keys.clear(); L.whites = []; L.blacks = [];
   let wi = 0;
   const bw = L.ww * 0.6;
@@ -1211,9 +1254,201 @@ function alpha(hex, a) {
   return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
 }
 
+/* ---------- Pentagrama ---------- */
+const LETTER = [0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 5, 6];
+const dia = m => (Math.floor(m / 12) - 1) * 7 + LETTER[((m % 12) + 12) % 12];   // posición diatónica (Do4 = 28)
+const staffOf = n => (n.hand ? n.hand === 'L' : n.midi < 60) ? 'bass' : 'treble';
+const staffY = (d, staff) => staff === 'treble' ? L.tBot - (d - 30) * L.ls / 2 : L.bBot - (d - 18) * L.ls / 2;
+// Figura según la duración en pulsos
+function figure(beats) {
+  if (beats >= 3.5) return { hollow: true, stem: false, flags: 0, dot: false };
+  if (beats >= 2.75) return { hollow: true, stem: true, flags: 0, dot: true };
+  if (beats >= 1.75) return { hollow: true, stem: true, flags: 0, dot: false };
+  if (beats >= 1.25) return { hollow: false, stem: true, flags: 0, dot: true };
+  if (beats >= 0.875) return { hollow: false, stem: true, flags: 0, dot: false };
+  if (beats >= 0.625) return { hollow: false, stem: true, flags: 1, dot: true };
+  if (beats >= 0.375) return { hollow: false, stem: true, flags: 1, dot: false };
+  return { hollow: false, stem: true, flags: 2, dot: false };
+}
+function ledgers(x, d, staff, color) {
+  const ls = L.ls, w = ls * 1.05;
+  const lo = staff === 'treble' ? 28 : 16, hi = staff === 'treble' ? 40 : 28;
+  ctx.strokeStyle = color; ctx.lineWidth = Math.max(1, ls * 0.09);
+  ctx.beginPath();
+  for (let q = lo; q >= d; q -= 2) { const y = staffY(q, staff); ctx.moveTo(x - w, y); ctx.lineTo(x + w, y); }
+  for (let q = hi; q <= d; q += 2) { const y = staffY(q, staff); ctx.moveTo(x - w, y); ctx.lineTo(x + w, y); }
+  ctx.stroke();
+}
+function notehead(x, y, hollow, color) {
+  const ls = L.ls;
+  ctx.save();
+  ctx.translate(x, y); ctx.rotate(-0.35);
+  ctx.beginPath(); ctx.ellipse(0, 0, ls * 0.62, ls * 0.43, 0, 0, Math.PI * 2);
+  if (hollow) { ctx.lineWidth = ls * 0.16; ctx.strokeStyle = color; ctx.stroke(); }
+  else { ctx.fillStyle = color; ctx.fill(); }
+  ctx.restore();
+}
+function drawStaff(now) {
+  const g = game, { W, hitY, ls } = L;
+  const top = L.paperTop, bottom = Math.min(hitY - 6, L.bBot + 5 * ls);
+  // papel
+  ctx.fillStyle = C.night; ctx.fillRect(0, 0, W, hitY);
+  rr(6, top, W - 12, bottom - top, 10);
+  ctx.fillStyle = C.paper; ctx.fill();
+  // líneas del pentagrama
+  ctx.strokeStyle = alpha(C.ink, 0.8); ctx.lineWidth = Math.max(1, ls * 0.08);
+  ctx.beginPath();
+  for (const base of [L.tTop, L.bTop]) for (let i = 0; i < 5; i++) { const y = Math.round(base + i * ls) + 0.5; ctx.moveTo(16, y); ctx.lineTo(W - 16, y); }
+  ctx.moveTo(16.5, L.tTop); ctx.lineTo(16.5, L.bBot);
+  ctx.stroke();
+  // llave que une los dos pentagramas
+  ctx.fillStyle = C.ink;
+  ctx.fillRect(9, L.tTop, Math.max(2, ls * 0.22), L.bBot - L.tTop);
+  // claves
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  if (musicFontReady) {
+    ctx.font = (ls * 4) + 'px ' + MUSIC_FONT;
+    ctx.fillText('\u{1D11E}', 20, staffY(32, 'treble'));
+    ctx.fillText('\u{1D122}', 20, staffY(24, 'bass'));
+  } else {
+    ctx.font = '700 ' + (ls * 2.6) + 'px ' + FONT;
+    ctx.fillText('G', 22, staffY(30, 'treble'));
+    ctx.fillText('F', 22, staffY(20, 'bass'));
+  }
+
+  const pps = ls * (g.free ? 9 : g.staffSpacing || 10);
+  const xOf = t => L.cursorX + (t - g.t) * pps;
+  // zona de notas: todo lo que queda a la derecha de las claves
+  ctx.save();
+  ctx.beginPath(); ctx.rect(L.clefW, top, W - L.clefW - 8, bottom - top); ctx.clip();
+
+  if (!g.free) {
+    // compases
+    ctx.strokeStyle = alpha(C.ink, 0.55); ctx.lineWidth = Math.max(1, ls * 0.1);
+    ctx.beginPath();
+    for (const bt of g.bars) {
+      const x = Math.round(xOf(bt)) + 0.5;
+      if (x < L.clefW || x > W) continue;
+      ctx.moveTo(x, L.tTop); ctx.lineTo(x, L.bBot);
+    }
+    ctx.stroke();
+
+    const pending = g.mode === 'wait' ? g.groups[g.gi] : null;
+    const pulse = 0.5 + 0.5 * Math.sin(now / 180);
+    // acordes: notas de la misma mano que empiezan juntas comparten plica
+    const chords = [];
+    for (const n of g.notes) {
+      const x = xOf(n.t);
+      if (x < L.clefW - ls * 2 || x > W + ls * 2) continue;
+      const staff = staffOf(n);
+      const c = chords.find(ch => ch.staff === staff && Math.abs(ch.t - n.t) < 0.02);
+      if (c) c.notes.push(n); else chords.push({ t: n.t, staff, notes: [n] });
+    }
+    for (const ch of chords) {
+      const x = xOf(ch.t);
+      const fade = Math.max(0, Math.min(1, (x - L.clefW) / (ls * 3)));
+      const fig = figure((ch.notes[0].d + 0.04) / g.spb);
+      const ds = ch.notes.map(n => dia(n.midi));
+      const mid = ch.staff === 'treble' ? 34 : 22;
+      const up = (Math.min(...ds) + Math.max(...ds)) / 2 < mid;
+      const colorOf = n => {
+        if (!n.active && g.mode !== 'listen') return alpha(C.ink, 0.28 * fade);
+        if (g.mode === 'listen') return alpha(n.state === 'hit' ? (n.hand === 'L' ? C.lhInk : C.rhInk) : C.ink, fade);
+        if (n.state === 'hit') return alpha(C.goodInk, fade);
+        if (n.state === 'missed') return alpha(C.badInk, fade);
+        return alpha(C.ink, fade);
+      };
+      const glow = pending && g.waiting && ch.notes.some(n => pending.notes.includes(n) && n.state === 'pending');
+      // líneas adicionales
+      for (const n of ch.notes) ledgers(x, dia(n.midi), ch.staff, alpha(C.ink, 0.8 * fade));
+      // plica y corchetes
+      const stemColor = colorOf(ch.notes[0]);
+      if (fig.stem) {
+        const yHi = staffY(Math.max(...ds), ch.staff), yLo = staffY(Math.min(...ds), ch.staff);
+        const sx = up ? x + ls * 0.56 : x - ls * 0.56;
+        const y1 = up ? yLo : yHi, y2 = up ? yHi - ls * 3.3 : yLo + ls * 3.3;
+        ctx.strokeStyle = stemColor; ctx.lineWidth = Math.max(1.2, ls * 0.1);
+        ctx.beginPath(); ctx.moveTo(sx, y1); ctx.lineTo(sx, y2); ctx.stroke();
+        for (let f = 0; f < fig.flags; f++) {
+          const fy = y2 + (up ? f * ls * 0.8 : -f * ls * 0.8);
+          ctx.beginPath();
+          ctx.moveTo(sx, fy);
+          ctx.bezierCurveTo(sx + ls * 0.9, fy + (up ? ls * 0.7 : -ls * 0.7), sx + ls * 1.1, fy + (up ? ls * 1.5 : -ls * 1.5), sx + ls * 0.55, fy + (up ? ls * 2.3 : -ls * 2.3));
+          ctx.lineWidth = Math.max(1.2, ls * 0.14); ctx.stroke();
+        }
+      }
+      for (const n of ch.notes) {
+        const d = dia(n.midi), y = staffY(d, ch.staff);
+        const color = colorOf(n);
+        if (glow && pending.notes.includes(n) && n.state === 'pending') {
+          ctx.save();
+          ctx.shadowColor = n.hand === 'L' ? C.lh : C.rh; ctx.shadowBlur = 8 + pulse * 14;
+          notehead(x, y, fig.hollow, n.hand === 'L' ? C.lhInk : C.rhInk);
+          ctx.restore();
+        } else notehead(x, y, fig.hollow, color);
+        if (fig.dot) { ctx.beginPath(); ctx.arc(x + ls * 1.05, y - (d % 2 === 0 ? ls * 0.25 : 0), ls * 0.16, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill(); }
+        if (isBlack(n.midi)) {
+          ctx.font = (ls * 1.6) + 'px ' + FONT; ctx.textAlign = 'center'; ctx.fillStyle = color;
+          ctx.fillText('♯', x - ls * 1.35, y + ls * 0.55);
+        }
+        if (settings.showNames && (n.active || g.mode === 'listen') && fade > 0.3) {
+          ctx.font = '700 ' + Math.max(9, ls * 0.72) + 'px ' + FONT; ctx.textAlign = 'center';
+          ctx.fillStyle = alpha(n.hand === 'L' ? C.lhInk : C.rhInk, fade);
+          ctx.fillText(noteName(n.midi), x, up ? y + ls * 1.45 : y - ls * 0.95);
+        }
+      }
+    }
+  } else {
+    // Piano libre: lo que tocas aparece en el cursor y se desliza hacia la izquierda
+    g.freeBars = g.freeBars.filter(b => L.cursorX - (now - b.start) / 1000 * pps > L.clefW - ls * 2);
+    for (const b of g.freeBars) {
+      const x = L.cursorX - (now - b.start) / 1000 * pps;
+      const staff = b.midi < 60 ? 'bass' : 'treble', d = dia(b.midi), y = staffY(d, staff);
+      const color = b.midi < 60 ? C.lhInk : C.rhInk;
+      ledgers(x, d, staff, alpha(C.ink, 0.8));
+      notehead(x, y, false, color);
+      if (isBlack(b.midi)) { ctx.font = (ls * 1.6) + 'px ' + FONT; ctx.textAlign = 'center'; ctx.fillStyle = color; ctx.fillText('♯', x - ls * 1.35, y + ls * 0.55); }
+      if (settings.showNames) { ctx.font = '700 ' + Math.max(9, ls * 0.72) + 'px ' + FONT; ctx.textAlign = 'center'; ctx.fillStyle = color; ctx.fillText(noteName(b.midi), x, y + ls * 1.45); }
+    }
+    if (!g.freeBars.length && g.lastNote == null) {
+      ctx.fillStyle = alpha(C.ink, 0.6); ctx.textAlign = 'center';
+      ctx.font = '700 ' + Math.max(14, ls * 0.95) + 'px ' + FONT;
+      ctx.fillText('Toca cualquier tecla: la nota aparece en el pentagrama', (L.clefW + W) / 2, L.tTop - ls * 2);
+    }
+  }
+  ctx.restore();
+
+  // Cursor: la "tira de fieltro" del pentagrama
+  g.feltGlow = Math.max(0, g.feltGlow - 0.04);
+  ctx.save();
+  ctx.shadowColor = C.felt; ctx.shadowBlur = 4 + g.feltGlow * 18;
+  ctx.fillStyle = alpha(C.felt, 0.85);
+  ctx.fillRect(L.cursorX - 1.5, L.tTop - ls * 2.5, 3, L.bBot - L.tTop + ls * 5);
+  ctx.restore();
+  // Lo que estás tocando, dibujado en el cursor
+  for (const m of held) {
+    // en el pentagrama de la nota esperada si coincide; si no, según la altura
+    const want = !g.free && g.groups[g.gi] ? g.groups[g.gi].notes.find(n => n.midi === m) : null;
+    const staff = want ? staffOf(want) : m < 60 ? 'bass' : 'treble';
+    const d = dia(m), y = staffY(d, staff);
+    const col = inkify(g.keyColor.get(m) || C.muted);
+    ledgers(L.cursorX, d, staff, alpha(C.ink, 0.5));
+    ctx.save();
+    ctx.translate(L.cursorX, y); ctx.rotate(-0.35);
+    ctx.beginPath(); ctx.ellipse(0, 0, ls * 0.8, ls * 0.58, 0, 0, Math.PI * 2);
+    ctx.lineWidth = ls * 0.18; ctx.strokeStyle = col; ctx.stroke();
+    ctx.restore();
+    if (isBlack(m)) { ctx.font = (ls * 1.6) + 'px ' + FONT; ctx.textAlign = 'center'; ctx.fillStyle = col; ctx.fillText('♯', L.cursorX - ls * 1.6, y + ls * 0.55); }
+  }
+}
+
 function draw(now) {
   const { W, H, hitY } = L;
   ctx.clearRect(0, 0, W, H);
+  const staffView = settings.view === 'staff';
+  const g = game;
+  if (staffView) drawStaff(now);
+  else {
   const bg = ctx.createLinearGradient(0, 0, 0, hitY);
   bg.addColorStop(0, C.night); bg.addColorStop(1, C.stage);
   ctx.fillStyle = bg; ctx.fillRect(0, 0, W, hitY);
@@ -1225,7 +1460,6 @@ function draw(now) {
     ctx.fillRect(Math.round(k.x), 0, 1, hitY);
   }
 
-  const g = game;
   if (!g.free) {
     // Compases
     ctx.fillStyle = alpha(C.line, 0.55);
@@ -1267,7 +1501,7 @@ function draw(now) {
         sheen.addColorStop(0, 'rgba(255,255,255,0.22)'); sheen.addColorStop(0.5, 'rgba(255,255,255,0)');
         ctx.fillStyle = sheen; ctx.fill();
       }
-      if (w > 15 && bot - top > 18) {
+      if (settings.showNames && w > 15 && bot - top > 18) {
         ctx.font = `700 ${Math.min(13, w * 0.42)}px ${FONT}`;
         ctx.fillStyle = n.active || g.mode === 'listen' ? 'rgba(30,18,0,0.85)' : alpha(color, 0.9);
         if (n.hand === 'L' && (n.active || g.mode === 'listen')) ctx.fillStyle = 'rgba(0,30,28,0.85)';
@@ -1297,8 +1531,9 @@ function draw(now) {
 
   // Tira de fieltro rojo (línea de acierto)
   g.feltGlow = Math.max(0, g.feltGlow - 0.04);
+  }
   ctx.fillStyle = C.felt;
-  ctx.shadowColor = C.felt; ctx.shadowBlur = 6 + g.feltGlow * 22;
+  ctx.shadowColor = C.felt; ctx.shadowBlur = staffView ? 4 : 6 + g.feltGlow * 22;
   ctx.fillRect(0, hitY - 5, W, 5);
   ctx.shadowBlur = 0;
 
@@ -1384,8 +1619,10 @@ function draw(now) {
   for (const f of g.floats) {
     f.y -= 40 * dt;
     ctx.font = `700 15px ${FONT}`;
-    ctx.fillStyle = alpha(f.color.startsWith('#') ? f.color : '#ffffff', f.life);
-    ctx.fillText(f.text, Math.min(Math.max(f.x, 50), W - 50), f.y);
+    const fc = staffView ? inkify(f.color) : f.color;
+    ctx.fillStyle = alpha(fc.startsWith('#') ? fc : '#ffffff', f.life);
+    if (staffView) ctx.fillText(f.text, L.cursorX + L.ls * 3, L.tTop - L.ls * 2.6 + (1 - f.life) * -10);
+    else ctx.fillText(f.text, Math.min(Math.max(f.x, 50), W - 50), f.y);
   }
 
   // Cuenta atrás e indicaciones
@@ -1394,20 +1631,21 @@ function draw(now) {
     const remain = (firstT - g.t) / g.speed;
     if (g.t < firstT && remain < 3 && remain > 0) {
       ctx.font = `800 ${Math.min(96, hitY * 0.3)}px ${FONT}`;
-      ctx.fillStyle = alpha(C.text, 0.85);
-      ctx.fillText(String(Math.ceil(remain)), W / 2, hitY * 0.45);
+      ctx.fillStyle = alpha(staffView ? C.ink : C.text, staffView ? 0.35 : 0.85);
+      ctx.fillText(String(Math.ceil(remain)), staffView ? (L.cursorX + W) / 2 : W / 2, staffView ? (L.tBot + L.bTop) / 2 + hitY * 0.1 : hitY * 0.45);
     }
     if (g.mode === 'wait' && g.waiting) {
       const grp = g.groups[g.gi];
       if (grp) {
         const names = grp.notes.filter(n => n.state === 'pending').map(n => noteName(n.midi)).join(' + ');
-        const txt = 'Toca ' + names;
+        const txt = settings.showNames ? 'Toca ' + names : 'Toca la nota marcada';
         ctx.font = `700 16px ${FONT}`;
         const tw = ctx.measureText(txt).width + 28;
-        rr(W / 2 - tw / 2, 14, tw, 32, 16);
+        const py = staffView ? L.paperTop + 8 : 14;
+        rr(W / 2 - tw / 2, py, tw, 32, 16);
         ctx.fillStyle = alpha(C.panel, 0.92); ctx.fill();
         ctx.fillStyle = C.text;
-        ctx.fillText(txt, W / 2, 35);
+        ctx.fillText(txt, W / 2, py + 21);
       }
     }
   }
@@ -1659,12 +1897,33 @@ $('#octDown').onclick = () => setOct(octShift - 1);
 $('#octUp').onclick = () => setOct(octShift + 1);
 
 // Ajustes
-function applyLabels() {
-  $('#lblSolf').setAttribute('aria-pressed', settings.labels !== 'letters');
-  $('#lblLet').setAttribute('aria-pressed', settings.labels === 'letters');
+const VIEW_ICONS = {
+  staff: '<path d="M2 4h14M2 7h14M2 10h14M2 13h14" stroke="currentColor" stroke-width="1.3"/><ellipse cx="11" cy="11.5" rx="2.2" ry="1.6" fill="currentColor" transform="rotate(-20 11 11.5)"/><path d="M13 11V3" stroke="currentColor" stroke-width="1.5"/>',
+  fall: '<rect x="3" y="2" width="3" height="6" rx="1" fill="currentColor"/><rect x="8" y="5" width="3" height="5" rx="1" fill="currentColor"/><rect x="13" y="1" width="3" height="4" rx="1" fill="currentColor"/><path d="M1 13h16M1 16h16" stroke="currentColor" stroke-width="1.4"/>',
+};
+function applyView() {
+  $('#viewStaff').setAttribute('aria-pressed', settings.view === 'staff');
+  $('#viewFall').setAttribute('aria-pressed', settings.view !== 'staff');
+  // el botón muestra la vista a la que cambias
+  const other = settings.view === 'staff' ? 'fall' : 'staff';
+  $('#viewIcon').innerHTML = VIEW_ICONS[other];
+  $('#viewBtn').setAttribute('aria-label', other === 'staff' ? 'Cambiar a pentagrama' : 'Cambiar a notas que caen');
 }
-$('#lblSolf').onclick = () => { settings.labels = 'solf'; save('tat-settings-v1', settings); applyLabels(); };
-$('#lblLet').onclick = () => { settings.labels = 'letters'; save('tat-settings-v1', settings); applyLabels(); };
+function setView(v) {
+  settings.view = v; save('tat-settings-v1', settings); applyView();
+  if (!$('#play').hidden) resize();
+}
+$('#viewStaff').onclick = () => setView('staff');
+$('#viewFall').onclick = () => setView('fall');
+$('#viewBtn').onclick = () => setView(settings.view === 'staff' ? 'fall' : 'staff');
+function applyLabels() {
+  $('#lblSolf').setAttribute('aria-pressed', settings.showNames && settings.labels !== 'letters');
+  $('#lblLet').setAttribute('aria-pressed', settings.showNames && settings.labels === 'letters');
+  $('#lblNone').setAttribute('aria-pressed', !settings.showNames);
+}
+$('#lblSolf').onclick = () => { settings.labels = 'solf'; settings.showNames = true; save('tat-settings-v1', settings); applyLabels(); };
+$('#lblLet').onclick = () => { settings.labels = 'letters'; settings.showNames = true; save('tat-settings-v1', settings); applyLabels(); };
+$('#lblNone').onclick = () => { settings.showNames = false; save('tat-settings-v1', settings); applyLabels(); };
 $('#vol').value = settings.volume;
 $('#vol').addEventListener('input', e => {
   settings.volume = +e.target.value; save('tat-settings-v1', settings);
@@ -1674,6 +1933,7 @@ $('#midiBtn').onclick = connectMidi;
 $('#micBtn').onclick = toggleMic;
 
 applyLabels();
+applyView();
 renderHome();
 // App instalable y sin conexión (solo cuando se sirve por https o localhost)
 if ('serviceWorker' in navigator && window.isSecureContext && window.top === window && /^https?:$/.test(location.protocol)) {

@@ -1,6 +1,6 @@
 # Tecla a Tecla
 
-Aprende piano con notas que caen sobre el teclado, al estilo Simply Piano / Synthesia.
+Aprende piano leyendo en el pentagrama, al estilo Simply Piano, o con notas que caen sobre el teclado, al estilo Synthesia.
 
 **Abrir:** https://ivansigaloff.github.io/tecla-a-tecla/
 
