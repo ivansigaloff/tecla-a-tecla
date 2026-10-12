@@ -997,7 +997,7 @@ async function toggleFullscreen() {
 
 // Micrófono: detección de tono monofónica (YIN), sirve para piano y violonchelo
 const mic = { on: false, analyser: null, buf: null, stream: null, note: null, cand: null, candCount: 0, silent: 0,
-  peak: 0, dipped: false, level: 0, freq: null, detected: null, cents: 0, yin: null, denied: false, muteUntil: 0, stale: null };
+  peak: 0, dipped: false, level: 0, freq: null, detected: null, cents: 0, yin: null, denied: false, muteUntil: 0, stale: null, auto: false };
 function muteMic(sec) { if (actx) mic.muteUntil = Math.max(mic.muteUntil, actx.currentTime + sec); }
 async function toggleMic() {
   const st = $('#micStatus');
@@ -1121,7 +1121,9 @@ const game = {
     this.cello = isCello();
     if (this.cello) {
       this.hands = 'R';
-      if (!mic.on && !mic.denied) toggleMic();   // el violonchelo se escucha por el micrófono
+      if (!mic.on && !mic.denied) { mic.auto = true; toggleMic(); }   // el violonchelo se escucha por el micrófono
+    } else if (mic.on && mic.auto) {
+      toggleMic(); mic.auto = false;   // lo abrió el violonchelo: en piano oiría los altavoces y callaría la música
     }
     $('#octBox').hidden = this.cello;
     $('#viewBtn').hidden = this.cello;
@@ -1129,7 +1131,8 @@ const game = {
     this.particles = []; this.floats = []; this.freeBars = [];
     this.keyColor.clear(); this.autoUntil.clear();
     this.guidedGi = -1; this.guideAgainAt = 0;
-    $('#guideBtn').hidden = !this.cello || this.free || this.mode === 'listen';
+    $('#guideBtn').hidden = this.free || this.mode === 'listen';
+    this.gpi = 0;
     this.stats = { hit: 0, perfect: 0, good: 0, miss: 0, wrong: 0, streak: 0, best: 0, points: 0 };
     $('#pauseOv').hidden = true; $('#resultOv').hidden = true;
     if (this.free) {
@@ -1212,7 +1215,7 @@ const game = {
       if (g && next >= g.t) { next = g.t; this.waiting = true; }
     }
     this.t = next;
-    if (mic.on && settings.guide && actx) this.guideTick(prev);
+    if (settings.guide && actx && this.mode !== 'listen') this.guideTick(prev);
     // Notas automáticas (la otra mano, o todas en modo Escuchar)
     while (this.ai < this.auto.length) {
       const n = this.auto[this.ai];
@@ -1239,8 +1242,8 @@ const game = {
     if (this.t > this.endT + 0.8) this.finish();
   },
 
-  // Con el micrófono abierto la app no puede sonar a la vez que el alumno (se oiría a sí misma):
-  // en Aprender canta la nota que viene antes de que la toques; en Desafío marca el pulso con un clic
+  // Sonido guía. En Aprender suena la nota que viene antes de que la toques. En Desafío suena
+  // bajito la melodía completa; con el micrófono abierto eso no se puede (se oiría a sí misma) y se marca el pulso con un clic
   guideTick(prev) {
     const now = actx.currentTime;
     if (this.mode === 'wait' && this.waiting) {
@@ -1251,9 +1254,14 @@ const game = {
         const pg = this.groups[this.gi - 1];
         const same = pg && pg.notes[0].midi === g.notes[0].midi && g.t - pg.t < 2.5;   // notas repetidas: ya la oíste
         if (same) this.guideAgainAt = now + 5; else this.playGuide(g);
-      } else if (this.guideAgainAt && now >= this.guideAgainAt && mic.note == null) this.playGuide(g);
+      } else if (this.guideAgainAt && now >= this.guideAgainAt && !held.size) this.playGuide(g);
     }
-    if (this.mode === 'play' && this.t < this.endT) {
+    if (this.mode === 'play' && !mic.on) {
+      while (this.gpi < this.act.length && this.act[this.gpi].t <= this.t) {
+        const n = this.act[this.gpi++];
+        if (n.t >= prev - 0.25) playFor(n.midi, n.d / this.speed, 0.3);
+      }
+    } else if (this.mode === 'play' && this.t < this.endT) {
       const k0 = Math.floor(prev / this.spb + 1e-6), k1 = Math.floor(this.t / this.spb + 1e-6);
       if (k1 > k0) playClick(((k1 - (this.song.pickup || 0)) % (this.song.meter || 4) + (this.song.meter || 4)) % (this.song.meter || 4) === 0);
     }
@@ -1293,7 +1301,7 @@ const game = {
       } else {
         s.wrong++; s.streak = 0;
         this.keyColor.set(midi, C.bad);
-        if (src === 'mic' && actx) this.guideAgainAt = actx.currentTime + 0.8;
+        if (actx && this.guidedGi === this.gi) this.guideAgainAt = actx.currentTime + 0.8;
       }
     } else {
       let best = null, bestErr = Infinity;
@@ -2280,7 +2288,7 @@ $('#vol').addEventListener('input', e => {
   if (master) master.gain.value = settings.volume;
 });
 $('#midiBtn').onclick = connectMidi;
-$('#micBtn').onclick = toggleMic;
+$('#micBtn').onclick = () => { mic.auto = false; toggleMic(); };
 
 applyLabels();
 applyView();
