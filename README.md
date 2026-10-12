@@ -10,7 +10,7 @@ Aprende piano leyendo en el pentagrama, al estilo Simply Piano, o con notas que 
 - 11 canciones en 3 niveles, cada una en versión Fácil, Normal y Difícil.
 - **Importar MIDI:** carga cualquier archivo .mid y tócalo con notas que caen.
 - Práctica por manos y velocidad ajustable.
-- **Violonchelo:** te escucha por el micrófono, lees en clave de fa y ves la cuerda, el dedo y un afinador. Incluye Cuerdas al aire, Escala de Re mayor y Show Time.
+- **Violonchelo:** te escucha por el micrófono, lees en clave de fa y ves la cuerda, el dedo y un afinador. Incluye 10 piezas propias: de cuerdas al aire (Show Time, Marcha al aire, Eco en Re) hasta melodías en Re mayor.
 
 ## En una tablet Android con teclado USB-C
 
