@@ -35,6 +35,9 @@
   --lh-ink: #0d8a80;
   --good-ink: #2a9a4c;
   --bad-ink: #d33a4e;
+  --wood: #22160f;
+  --wood-2: #3a271b;
+  --string: #e3d3a8;
   --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
   --body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
   color-scheme: dark;
@@ -325,7 +328,7 @@ dialog::backdrop { background: rgb(10 8 24 / 0.7); backdrop-filter: blur(4px); }
         </svg>
         <div>
           <h1>Tecla a Tecla</h1>
-          <p>Aprende piano tocando canciones. Las notas caen, tú las tocas, y en modo Aprender la canción te espera.</p>
+          <p>Aprende piano o violonchelo tocando canciones. Las notas avanzan, tú las tocas, y en modo Aprender la canción te espera.</p>
         </div>
       </div>
       <div class="tally" aria-live="polite">
@@ -356,9 +359,15 @@ dialog::backdrop { background: rgb(10 8 24 / 0.7); backdrop-filter: blur(4px); }
     <div class="inputs">
       <h3>Cómo vas a tocar</h3>
       <div class="chips">
+        <div class="chip"><b>Instrumento</b>
+          <div class="seg" role="group" aria-label="Instrumento">
+            <button type="button" id="instPiano" aria-pressed="true">Piano</button>
+            <button type="button" id="instCello" aria-pressed="false">Violonchelo</button>
+          </div>
+        </div>
         <div class="chip"><i class="dot on"></i><b>Teclado y pantalla</b><span class="s">siempre activos</span></div>
         <div class="chip"><i class="dot" id="midiDot"></i><b>Teclado MIDI</b><span class="s" id="midiStatus">USB o USB-C</span><button class="link" id="midiBtn" type="button">Conectar</button></div>
-        <div class="chip"><i class="dot" id="micDot"></i><b>Micrófono</b><span class="s" id="micStatus">para piano real</span><button class="link" id="micBtn" type="button">Activar</button></div>
+        <div class="chip"><i class="dot" id="micDot"></i><b>Micrófono</b><span class="s" id="micStatus">para piano o violonchelo</span><button class="link" id="micBtn" type="button">Activar</button></div>
         <div class="chip"><b>Nombres</b>
           <div class="seg" role="group" aria-label="Nombres de las notas">
             <button type="button" id="lblSolf" aria-pressed="true">Do Re Mi</button>
@@ -366,7 +375,7 @@ dialog::backdrop { background: rgb(10 8 24 / 0.7); backdrop-filter: blur(4px); }
             <button type="button" id="lblNone" aria-pressed="false">Ocultar</button>
           </div>
         </div>
-        <div class="chip"><b>Vista</b>
+        <div class="chip" id="viewChip"><b>Vista</b>
           <div class="seg" role="group" aria-label="Cómo se muestran las notas">
             <button type="button" id="viewStaff" aria-pressed="true">Pentagrama</button>
             <button type="button" id="viewFall" aria-pressed="false">Notas que caen</button>
@@ -374,6 +383,7 @@ dialog::backdrop { background: rgb(10 8 24 / 0.7); backdrop-filter: blur(4px); }
         </div>
         <div class="chip"><label for="vol"><b>Volumen</b></label><input type="range" id="vol" min="0" max="1" step="0.05" value="0.8"></div>
       </div>
+      <p class="kbd-help" id="celloHelp" hidden>Violonchelo: la app te escucha por el micrófono, una nota a la vez. Pon la tablet cerca, en un lugar tranquilo. Lees en clave de fa y abajo ves la cuerda y el dedo de cada nota, con un afinador. Si un armónico suena una octava arriba, igual cuenta.</p>
       <p class="kbd-help">Teclado de computadora: la fila <kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd>… toca desde Do4 (con <kbd>2</kbd><kbd>3</kbd><kbd>5</kbd> para las negras) y la fila <kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd>… desde Do3. <kbd>↑</kbd> <kbd>↓</kbd> cambian de octava, <kbd>Espacio</kbd> pausa.</p>
     </div>
 
@@ -488,7 +498,17 @@ const rpt = (tok, n) => Array(n).fill(tok).join(' ');
 const burst = (note, n) => rpt(note + ':.25', n - 1) + ' ' + note + ':.5';
 const SAND_A = [burst('B4', 5), 'R:.5', burst('B4', 7)].join(' ');
 const SAND_PHRASE = [SAND_A, burst('E5', 7), rpt('D5:.25', 6), 'A4:.25 A4:.25', SAND_A, burst('E5', 7), burst('B4', 5), 'R:.5'].join(' ');
+// Show Time (KB & DB) para violonchelo: 36 compases en negras, con silencios
+const ST_D = 'D3 D3 D3 D3', ST_G = 'G2 G2 G2 G2', ST_A = 'A3 A3 A3 A3', ST_END = 'D3 R R:2';
+const ST_MAIN = [ST_D, ST_G, ST_D, ST_END, ST_D, ST_G, ST_D, ST_END, ST_A, ST_A, ST_D, ST_END].join(' ');
+const ST_MID = ['R:4', 'A3 A3 D3 D3', 'R:4', 'A3 A3 D3 D3', 'R:4', 'D3 D3 A3 A3', 'R:4', 'A3 A3 D3 D3', 'R:4', 'A3 A3 R:2', 'R:4', 'D3 D3 R:2'].join(' ');
 const SONGS = [
+  { id: 'cuerdas', title: 'Cuerdas al aire', sub: 'Violonchelo · La, Re, Sol, Do', level: 1, bpm: 70, meter: 4, cello: true,
+    rh: 'A3:4 D3:4 G2:4 C2:4 C2:2 G2:2 D3:2 A3:2 A3 D3 G2 C2 C2:4' },
+  { id: 'escre', title: 'Escala de Re mayor', sub: 'Violonchelo · primera posición', level: 1, bpm: 80, meter: 4, cello: true,
+    rh: 'D3 E3 F#3 G3 A3 B3 C#4 D4 C#4 B3 A3 G3 F#3 E3 D3:2' },
+  { id: 'showtime', title: 'Show Time', sub: 'KB & DB · cuerdas al aire Re, Sol y La', level: 1, bpm: 92, meter: 4, cello: true,
+    rh: [ST_MAIN, ST_MID, ST_MAIN].join(' ') },
   { id: 'domi', title: 'Do, Re, Mi', sub: 'Primeros pasos con tres notas', level: 1, bpm: 80, meter: 4,
     rh: 'C4 C4 D4 D4 E4 E4 D4:2 C4 D4 E4 C4 D4:2 C4:2' },
   { id: 'escala', title: 'La escala de Do', sub: 'Ejercicio · paso del pulgar', level: 1, bpm: 90, meter: 4,
@@ -563,6 +583,36 @@ function songNotes(song, diff = 'normal') {
   if (song.lh) n.push(...parseTrack(song.lh, 'L', bpm));
   if (diff === 'easy') n = simplify(n, song, 60 / bpm);
   return n.sort((a, b) => a.t - b.t || a.midi - b.midi);
+}
+// Violonchelo: una sola voz (la más aguda de la mano derecha) llevada a la primera posición, Do2 a Re4
+function celloShift(notes) {
+  let best = 0, score = -1;
+  for (const sh of [-12, -24, 0, -36, 12]) {
+    const sc = notes.filter(n => n.midi + sh >= 36 && n.midi + sh <= 62).length;
+    if (sc > score) { score = sc; best = sh; }
+  }
+  return best;
+}
+function melodyOf(notes) {
+  let mel = notes.filter(n => n.hand === 'R');
+  if (!mel.length) mel = notes.slice();
+  mel.sort((a, b) => a.t - b.t || b.midi - a.midi);
+  const out = [];
+  for (const n of mel) {
+    const last = out[out.length - 1];
+    if (last && Math.abs(n.t - last.t) < 0.03) continue;           // acorde: queda la nota más aguda
+    if (last && last.t + last.d > n.t) last.d = Math.max(0.08, n.t - last.t - 0.03);
+    out.push({ ...n, hand: 'R' });
+  }
+  return out;
+}
+function notesFor(song, diff = 'normal') {
+  const n = songNotes(song, diff);
+  if (!isCello()) return n;
+  const mel = melodyOf(n);
+  const sh = song.cello ? 0 : celloShift(mel);
+  mel.forEach(x => { x.midi += sh; });
+  return mel;
 }
 // Versión fácil: la derecha toca una nota por pulso (la más aguda) y la izquierda una por compás (la más grave)
 function simplify(notes, song, spb) {
@@ -671,14 +721,16 @@ function load(key, fallback) {
   try { const v = JSON.parse(localStorage.getItem(key)); return v ?? fallback; } catch { return fallback; }
 }
 function save(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }
-const settings = Object.assign({ labels: 'solf', volume: 0.8, view: 'staff', showNames: true }, load('tat-settings-v1', {}));
+const settings = Object.assign({ labels: 'solf', volume: 0.8, view: 'staff', showNames: true, instrument: 'piano' }, load('tat-settings-v1', {}));
+const isCello = () => settings.instrument === 'cello';
 const progress = load('tat-progress-v1', {});
 const imports = load('tat-imports-v1', []);
 const allSongs = () => [...SONGS, ...imports];
 function saveImports() { try { localStorage.setItem('tat-imports-v1', JSON.stringify(imports)); return true; } catch { return false; } }
 const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 for (const k in progress) if (typeof progress[k].stars === 'number') progress[k] = { normal: progress[k] };  // formato anterior
-const diffStars = (id, d) => ((progress[id] || {})[d] || {}).stars || 0;
+const pk = id => (isCello() ? 'cello:' : '') + id;   // el violonchelo guarda sus propias estrellas
+const diffStars = (id, d) => ((progress[pk(id)] || {})[d] || {}).stars || 0;
 const bestStars = id => Math.max(0, ...Object.keys(DIFFS).map(d => diffStars(id, d)));
 const noteName = (m, oct) => (settings.labels === 'letters' ? LETT : SOLF)[((m % 12) + 12) % 12] + (oct ? Math.floor(m / 12) - 1 : '');
 
@@ -697,9 +749,31 @@ function ensureAudio() {
   if (actx.state === 'suspended') actx.resume();
 }
 const PARTIALS = [[1, 'triangle', 0.55], [2, 'sine', 0.22], [3, 'sine', 0.09], [4, 'sine', 0.035], [1.0025, 'sine', 0.22]];
-function makeVoice(midi, vel, when) {
+const timbre = () => isCello() ? 'cello' : 'piano';
+function makeVoice(midi, vel, when, kind = 'piano') {
   const t = Math.max(actx.currentTime, when || 0);
   const f = 440 * Math.pow(2, (midi - 69) / 12);
+  if (kind === 'cello') {
+    // arco: diente de sierra filtrado, cuerpo resonante y vibrato que entra despacio
+    const out = actx.createGain();
+    const filt = actx.createBiquadFilter(); filt.type = 'lowpass'; filt.frequency.value = Math.min(f * 7, 3200); filt.Q.value = 0.9;
+    const body = actx.createBiquadFilter(); body.type = 'peaking'; body.frequency.value = 230; body.gain.value = 5; body.Q.value = 1.2;
+    filt.connect(body); body.connect(out); out.connect(master);
+    const o1 = actx.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = f;
+    const o2 = actx.createOscillator(); o2.type = 'triangle'; o2.frequency.value = f * 1.002;
+    const g2 = actx.createGain(); g2.gain.value = 0.5;
+    o1.connect(filt); o2.connect(g2); g2.connect(filt);
+    const lfo = actx.createOscillator(); lfo.frequency.value = 5.3;
+    const depth = actx.createGain(); depth.gain.setValueAtTime(0, t); depth.gain.linearRampToValueAtTime(f * 0.005, t + 0.4);
+    lfo.connect(depth); depth.connect(o1.frequency); depth.connect(o2.frequency);
+    const peak = 0.2 * vel;
+    out.gain.setValueAtTime(0, t);
+    out.gain.linearRampToValueAtTime(peak, t + 0.08);
+    out.gain.setTargetAtTime(peak * 0.8, t + 0.08, 0.3);
+    const oscs = [o1, o2, lfo];
+    oscs.forEach(o => { o.start(t); o.stop(t + 30); });
+    return { out, oscs, released: false };
+  }
   const out = actx.createGain();
   const filt = actx.createBiquadFilter();
   filt.type = 'lowpass'; filt.Q.value = 0.6;
@@ -735,7 +809,7 @@ function releaseVoice(v, when) {
 }
 function playFor(midi, dur, vel = 0.65) {
   ensureAudio();
-  const v = makeVoice(midi, vel);
+  const v = makeVoice(midi, vel, 0, timbre());
   releaseVoice(v, actx.currentTime + dur);
 }
 
@@ -752,9 +826,9 @@ function noteOn(midi, vel = 0.8, src = 'kb') {
   if (src !== 'mic') {
     releaseVoice(userVoices.get(midi));
     releaseVoice(sustained.get(midi)); sustained.delete(midi);
-    userVoices.set(midi, makeVoice(midi, vel));
+    userVoices.set(midi, makeVoice(midi, vel, 0, timbre()));
   }
-  game.onNoteOn(midi);
+  game.onNoteOn(midi, src);
 }
 function noteOff(midi) {
   if (!held.delete(midi)) return;
@@ -886,14 +960,15 @@ async function toggleFullscreen() {
   } catch {}
 }
 
-// Micrófono: detección de tono monofónica por autocorrelación
-const mic = { on: false, analyser: null, buf: null, stream: null, note: null, cand: null, candCount: 0, silent: 0, floor: 1 };
+// Micrófono: detección de tono monofónica (YIN), sirve para piano y violonchelo
+const mic = { on: false, analyser: null, buf: null, stream: null, note: null, cand: null, candCount: 0, silent: 0,
+  peak: 0, dipped: false, level: 0, freq: null, detected: null, cents: 0, yin: null, denied: false };
 async function toggleMic() {
   const st = $('#micStatus');
   if (mic.on) {
     mic.stream.getTracks().forEach(t => t.stop());
     mic.on = false; if (mic.note != null) noteOff(mic.note); mic.note = null;
-    $('#micDot').classList.remove('on'); $('#micBtn').textContent = 'Activar'; st.textContent = 'para piano real';
+    $('#micDot').classList.remove('on'); $('#micBtn').textContent = 'Activar'; st.textContent = 'para piano o violonchelo';
     return;
   }
   try {
@@ -907,53 +982,66 @@ async function toggleMic() {
     mic.on = true;
     $('#micDot').classList.add('on'); $('#micBtn').textContent = 'Desactivar';
     st.textContent = 'escuchando · una nota a la vez';
+    mic.denied = false;
   } catch {
     st.textContent = 'sin permiso de micrófono';
+    mic.denied = true;
   }
 }
 function detectPitch(buf, sr) {
-  let size = buf.length, rms = 0;
-  for (let i = 0; i < size; i++) rms += buf[i] * buf[i];
-  rms = Math.sqrt(rms / size);
-  if (rms < 0.012) return { f: -1, rms };
-  let r1 = 0, r2 = size - 1;
-  for (let i = 0; i < size / 2; i++) if (Math.abs(buf[i]) < 0.2) { r1 = i; break; }
-  for (let i = 1; i < size / 2; i++) if (Math.abs(buf[size - i]) < 0.2) { r2 = size - i; break; }
-  const b = buf.subarray(r1, r2);
-  size = b.length;
-  const maxLag = Math.min(size - 1, Math.floor(sr / 55));
-  const c = new Float32Array(maxLag + 1);
-  for (let i = 0; i <= maxLag; i++) { let s = 0; for (let j = 0; j < size - i; j++) s += b[j] * b[j + i]; c[i] = s; }
-  let d = 0;
-  while (d < maxLag && c[d] > c[d + 1]) d++;
-  let maxv = -1, p = -1;
-  for (let i = d; i <= maxLag; i++) if (c[i] > maxv) { maxv = c[i]; p = i; }
-  if (p <= 0 || p >= maxLag) return { f: -1, rms };
-  const a = (c[p - 1] + c[p + 1] - 2 * c[p]) / 2, bb = (c[p + 1] - c[p - 1]) / 2;
-  const T = a ? p - bb / (2 * a) : p;
+  const N = buf.length;
+  let rms = 0;
+  for (let i = 0; i < N; i++) rms += buf[i] * buf[i];
+  rms = Math.sqrt(rms / N);
+  if (rms < 0.01) return { f: -1, rms };
+  // YIN: diferencia normalizada acumulada; el primer valle bajo el umbral da el período
+  const minTau = Math.max(2, Math.floor(sr / 2100)), maxTau = Math.min(Math.floor(sr / 58), N >> 1);
+  const W = N - maxTau;
+  const d = mic.yin && mic.yin.length > maxTau + 1 ? mic.yin : (mic.yin = new Float32Array(maxTau + 2));
+  let run = 0;
+  d[0] = 1;
+  for (let tau = 1; tau <= maxTau; tau++) {
+    let sum = 0;
+    for (let j = 0; j < W; j++) { const df = buf[j] - buf[j + tau]; sum += df * df; }
+    run += sum;
+    d[tau] = run ? sum * tau / run : 1;
+  }
+  let tau = -1;
+  for (let t = minTau; t <= maxTau; t++) {
+    if (d[t] < 0.15) { while (t + 1 <= maxTau && d[t + 1] < d[t]) t++; tau = t; break; }
+  }
+  if (tau < 1) return { f: -1, rms };
+  const a = d[tau - 1], b = d[tau], c = tau + 1 <= maxTau ? d[tau + 1] : b;
+  const den = a + c - 2 * b;
+  const T = den ? tau + (a - c) / (2 * den) : tau;
   return { f: sr / T, rms };
 }
 function micTick() {
   if (!mic.on) return;
   mic.analyser.getFloatTimeDomainData(mic.buf);
   const { f, rms } = detectPitch(mic.buf, actx.sampleRate);
-  if (f < 55 || f > 2100) {
+  mic.level = rms;
+  if (f < 58 || f > 2100) {
+    mic.freq = null;
     if (++mic.silent > 3 && mic.note != null) { noteOff(mic.note); mic.note = null; }
     return;
   }
   mic.silent = 0;
-  const m = Math.round(69 + 12 * Math.log2(f / 440));
+  const exact = 69 + 12 * Math.log2(f / 440), m = Math.round(exact), cents = (exact - m) * 100;
+  mic.cents = mic.detected === m ? mic.cents * 0.7 + cents * 0.3 : cents;
+  mic.detected = m; mic.freq = f;
   if (m === mic.cand) mic.candCount++; else { mic.cand = m; mic.candCount = 1; }
-  if (mic.candCount < 2) return;
+  if (mic.candCount < 3) return;   // unos 50 ms de tono estable
   if (mic.note !== m) {
     if (mic.note != null) noteOff(mic.note);
-    mic.note = m; mic.floor = rms;
+    mic.note = m; mic.peak = rms; mic.dipped = false;
     noteOn(m, 0.8, 'mic');
-  } else if (rms > mic.floor * 1.8 && rms > 0.03) {
-    noteOff(m); noteOn(m, 0.8, 'mic'); mic.floor = rms;
-  } else {
-    mic.floor = Math.min(mic.floor, rms);
+    return;
   }
+  // misma nota: un golpe nuevo o un cambio de arco se ve como una bajada y subida de volumen
+  mic.peak = Math.max(mic.peak * 0.995, rms);
+  if (rms < mic.peak * 0.55) mic.dipped = true;
+  else if (mic.dipped && rms > mic.peak * 0.8) { noteOff(m); noteOn(m, 0.8, 'mic'); mic.dipped = false; mic.peak = rms; }
 }
 
 /* ================= Juego ================= */
@@ -961,7 +1049,8 @@ const $ = s => document.querySelector(s);
 const cv = $('#cv'), ctx = cv.getContext('2d');
 const css = getComputedStyle(document.documentElement);
 const C = {};
-['night', 'stage', 'panel', 'line', 'text', 'muted', 'felt', 'ivory', 'ebony', 'rh', 'lh', 'good', 'bad', 'paper', 'ink'].forEach(k => C[k] = css.getPropertyValue('--' + k).trim());
+['night', 'stage', 'panel', 'line', 'text', 'muted', 'felt', 'ivory', 'ebony', 'rh', 'lh', 'good', 'bad', 'paper', 'ink', 'wood', 'string'].forEach(k => C[k] = css.getPropertyValue('--' + k).trim());
+C.wood2 = css.getPropertyValue('--wood-2').trim();
 C.rhInk = css.getPropertyValue('--rh-ink').trim(); C.lhInk = css.getPropertyValue('--lh-ink').trim();
 C.goodInk = css.getPropertyValue('--good-ink').trim(); C.badInk = css.getPropertyValue('--bad-ink').trim();
 // sobre el papel del pentagrama los colores claros no se leen: se usan sus versiones en tinta
@@ -985,6 +1074,13 @@ const game = {
     this.free = !song;
     this.song = song;
     Object.assign(this, opts);
+    this.cello = isCello();
+    if (this.cello) {
+      this.hands = 'R';
+      if (!mic.on && !mic.denied) toggleMic();   // el violonchelo se escucha por el micrófono
+    }
+    $('#octBox').hidden = this.cello;
+    $('#viewBtn').hidden = this.cello;
     this.paused = false; this.ended = false; this.waiting = false;
     this.particles = []; this.floats = []; this.freeBars = [];
     this.keyColor.clear(); this.autoUntil.clear();
@@ -994,13 +1090,14 @@ const game = {
       const narrow = innerWidth < 640;
       this.lo = narrow ? 60 : 48; this.hi = narrow ? 84 : 84;
       setOct(0);
-      $('#hudTitle').textContent = 'Piano libre';
-      $('#hudMode').textContent = 'Toca lo que quieras';
+      if (this.cello) { this.lo = 36; this.hi = 72; }
+      $('#hudTitle').textContent = this.cello ? 'Violonchelo libre' : 'Piano libre';
+      $('#hudMode').textContent = this.cello ? 'Afinador · toca cualquier nota' : 'Toca lo que quieras';
       $('#progWrap').hidden = true;
     } else {
       const hands = this.hands;
       this.win = DIFFS[this.diff].win;   // ventana de acierto en Desafío (segundos reales)
-      this.notes = songNotes(song, this.diff).map(n => ({ ...n, state: 'pending', active: this.mode !== 'listen' && (hands === 'B' || n.hand === hands || !song.lh) }));
+      this.notes = notesFor(song, this.diff).map(n => ({ ...n, state: 'pending', active: this.mode !== 'listen' && (hands === 'B' || n.hand === hands || !song.lh) }));
       this.act = this.notes.filter(n => n.active);
       this.auto = this.notes.filter(n => !n.active);
       this.groups = [];
@@ -1042,7 +1139,7 @@ const game = {
       setOct(bestS);
       this.t = -LOOK * 0.85;
       $('#hudTitle').textContent = song.title;
-      const handTxt = !song.lh ? '' : this.hands === 'B' ? ' · ambas manos' : this.hands === 'R' ? ' · mano derecha' : ' · mano izquierda';
+      const handTxt = this.cello ? ' · violonchelo' : !song.lh ? '' : this.hands === 'B' ? ' · ambas manos' : this.hands === 'R' ? ' · mano derecha' : ' · mano izquierda';
       $('#hudMode').textContent = { wait: 'Aprender', play: 'Desafío', listen: 'Escuchar' }[this.mode] + ' · ' + DIFFS[this.diff].name + handTxt + (this.speed !== 1 ? ' · ' + Math.round(this.speed * 100) + '%' : '');
       $('#progWrap').hidden = false;
     }
@@ -1075,7 +1172,7 @@ const game = {
       if (n.t > this.t || (this.waiting && n.t >= this.t - 1e-4)) break;
       if (n.t >= prev - 0.25) {
         const realDur = n.d / this.speed;
-        if (!mic.on) playFor(n.midi, realDur, this.mode === 'listen' ? 0.7 : 0.5);
+        if (!mic.on || this.mode === 'listen') playFor(n.midi, realDur, this.mode === 'listen' ? 0.7 : 0.5);
         this.autoUntil.set(n.midi, { until: now + realDur * 1000, hand: n.hand });
         if (this.mode === 'listen') n.state = 'hit';
       }
@@ -1095,8 +1192,10 @@ const game = {
     if (this.t > this.endT + 0.8) this.finish();
   },
 
-  onNoteOn(midi) {
+  onNoteOn(midi, src) {
     this.lastNote = midi;
+    // por micrófono, un armónico puede sonar una octava arriba o abajo: se acepta
+    const sameNote = (n) => n.midi === midi || (src === 'mic' && Math.abs(n.midi - midi) === 12);
     if (this.free) {
       if (midi < this.lo || midi > this.hi) {   // el teclado crece para mostrar lo que tocas
         this.lo = Math.min(this.lo, 12 * Math.floor(midi / 12));
@@ -1111,7 +1210,7 @@ const game = {
     const s = this.stats;
     if (this.mode === 'wait') {
       const g = this.groups[this.gi];
-      const n = g && g.t - this.t <= 0.45 ? g.notes.find(x => x.midi === midi && x.state === 'pending') : null;
+      const n = g && g.t - this.t <= 0.45 ? (g.notes.find(x => x.midi === midi && x.state === 'pending') || g.notes.find(x => sameNote(x) && x.state === 'pending')) : null;
       if (n) {
         n.state = 'hit'; s.hit++; s.streak++; s.best = Math.max(s.best, s.streak);
         this.keyColor.set(midi, n.hand === 'L' ? C.lh : C.rh);
@@ -1124,8 +1223,9 @@ const game = {
     } else {
       let best = null, bestErr = Infinity;
       for (const n of this.act) {
-        if (n.state !== 'pending' || n.midi !== midi) continue;
-        const err = Math.abs(n.t - this.t) / this.speed;
+        if (n.state !== 'pending' || !sameNote(n)) continue;
+        // el micrófono confirma una nota unos 60 ms después de que empieza a sonar
+        const err = Math.abs(n.t - (this.t - (src === 'mic' ? 0.06 * this.speed : 0))) / this.speed;
         if (err < bestErr) { bestErr = err; best = n; }
         if (n.t > this.t + 1) break;
       }
@@ -1152,7 +1252,7 @@ const game = {
 
   burst(n) {
     this.feltGlow = 1;
-    if (reduceMotion) return;
+    if (reduceMotion || this.cello) return;
     const k = keyRect(n.midi);
     if (!k) return;
     const color = n.hand === 'L' ? C.lh : C.rh;
@@ -1184,7 +1284,7 @@ const game = {
     if (this.mode === 'wait') acc = total ? total / (total + s.wrong * 0.5) : 0;
     else acc = total ? (s.perfect + s.good * 0.75) / (total + s.wrong * 0.25) : 0;
     const stars = acc >= 0.9 ? 3 : acc >= 0.75 ? 2 : acc >= 0.5 ? 1 : 0;
-    const rec = progress[this.song.id] || (progress[this.song.id] = {});
+    const rec = progress[pk(this.song.id)] || (progress[pk(this.song.id)] = {});
     const prevBest = rec[this.diff] || { stars: 0, acc: 0 };
     rec[this.diff] = { stars: Math.max(prevBest.stars, stars), acc: Math.max(prevBest.acc, acc) };
     save('tat-progress-v1', progress);
@@ -1221,8 +1321,8 @@ function resize() {
   const whites = [];
   for (let m = game.lo; m <= game.hi; m++) if (!isBlack(m)) whites.push(m);
   L.ww = L.W / whites.length;
-  const staffView = settings.view === 'staff';
-  L.kh = staffView ? Math.max(Math.min(L.H * 0.26, L.ww * 4.6, 190), Math.min(96, L.H * 0.3))
+  const staffView = settings.view === 'staff' || game.cello;
+  L.kh = game.cello ? Math.max(150, Math.min(L.H * 0.36, 270)) : staffView ? Math.max(Math.min(L.H * 0.26, L.ww * 4.6, 190), Math.min(96, L.H * 0.3))
                    : Math.max(Math.min(L.H * 0.3, L.ww * 5.2, 230), Math.min(120, L.H * 0.35));
   L.hitY = L.H - L.kh;
   L.pps = (L.hitY - 12) / LOOK;
@@ -1232,6 +1332,15 @@ function resize() {
   L.paperTop = Math.max(4, (area - 23 * L.ls) / 2);
   L.tTop = L.paperTop + 5 * L.ls; L.tBot = L.tTop + 4 * L.ls;
   L.bTop = L.tBot + 5 * L.ls; L.bBot = L.bTop + 4 * L.ls;
+  L.single = !!game.cello;
+  if (L.single) {
+    // clave de fa sola: 6 espacios arriba (hasta Sol4), 4 de pentagrama, 5 abajo (hasta Do2)
+    L.ls = Math.max(7, Math.min(22, area / 15));
+    L.paperTop = Math.max(4, (area - 15 * L.ls) / 2);
+    L.bTop = L.paperTop + 6 * L.ls; L.bBot = L.bTop + 4 * L.ls;
+    L.tTop = L.tBot = -1000;
+  }
+  L.staffTop = L.single ? L.bTop : L.tTop;
   L.clefW = L.ls * 5.2;
   L.cursorX = Math.min(L.W * 0.3, L.clefW + L.ls * 4);
   L.keys.clear(); L.whites = []; L.blacks = [];
@@ -1257,7 +1366,7 @@ function alpha(hex, a) {
 /* ---------- Pentagrama ---------- */
 const LETTER = [0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 5, 6];
 const dia = m => (Math.floor(m / 12) - 1) * 7 + LETTER[((m % 12) + 12) % 12];   // posición diatónica (Do4 = 28)
-const staffOf = n => (n.hand ? n.hand === 'L' : n.midi < 60) ? 'bass' : 'treble';
+const staffOf = n => game.cello || (n.hand ? n.hand === 'L' : n.midi < 60) ? 'bass' : 'treble';
 const staffY = (d, staff) => staff === 'treble' ? L.tBot - (d - 30) * L.ls / 2 : L.bBot - (d - 18) * L.ls / 2;
 // Figura según la duración en pulsos
 function figure(beats) {
@@ -1298,21 +1407,21 @@ function drawStaff(now) {
   // líneas del pentagrama
   ctx.strokeStyle = alpha(C.ink, 0.8); ctx.lineWidth = Math.max(1, ls * 0.08);
   ctx.beginPath();
-  for (const base of [L.tTop, L.bTop]) for (let i = 0; i < 5; i++) { const y = Math.round(base + i * ls) + 0.5; ctx.moveTo(16, y); ctx.lineTo(W - 16, y); }
-  ctx.moveTo(16.5, L.tTop); ctx.lineTo(16.5, L.bBot);
+  for (const base of (L.single ? [L.bTop] : [L.tTop, L.bTop])) for (let i = 0; i < 5; i++) { const y = Math.round(base + i * ls) + 0.5; ctx.moveTo(16, y); ctx.lineTo(W - 16, y); }
+  ctx.moveTo(16.5, L.staffTop); ctx.lineTo(16.5, L.bBot);
   ctx.stroke();
   // llave que une los dos pentagramas
   ctx.fillStyle = C.ink;
-  ctx.fillRect(9, L.tTop, Math.max(2, ls * 0.22), L.bBot - L.tTop);
+  ctx.fillRect(9, L.staffTop, Math.max(2, ls * 0.22), L.bBot - L.staffTop);
   // claves
   ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
   if (musicFontReady) {
     ctx.font = (ls * 4) + 'px ' + MUSIC_FONT;
-    ctx.fillText('\u{1D11E}', 20, staffY(32, 'treble'));
+    if (!L.single) ctx.fillText('\u{1D11E}', 20, staffY(32, 'treble'));
     ctx.fillText('\u{1D122}', 20, staffY(24, 'bass'));
   } else {
     ctx.font = '700 ' + (ls * 2.6) + 'px ' + FONT;
-    ctx.fillText('G', 22, staffY(30, 'treble'));
+    if (!L.single) ctx.fillText('G', 22, staffY(30, 'treble'));
     ctx.fillText('F', 22, staffY(20, 'bass'));
   }
 
@@ -1329,7 +1438,7 @@ function drawStaff(now) {
     for (const bt of g.bars) {
       const x = Math.round(xOf(bt)) + 0.5;
       if (x < L.clefW || x > W) continue;
-      ctx.moveTo(x, L.tTop); ctx.lineTo(x, L.bBot);
+      ctx.moveTo(x, L.staffTop); ctx.lineTo(x, L.bBot);
     }
     ctx.stroke();
 
@@ -1413,7 +1522,7 @@ function drawStaff(now) {
     if (!g.freeBars.length && g.lastNote == null) {
       ctx.fillStyle = alpha(C.ink, 0.6); ctx.textAlign = 'center';
       ctx.font = '700 ' + Math.max(14, ls * 0.95) + 'px ' + FONT;
-      ctx.fillText('Toca cualquier tecla: la nota aparece en el pentagrama', (L.clefW + W) / 2, L.tTop - ls * 2);
+      ctx.fillText('Toca cualquier tecla: la nota aparece en el pentagrama', (L.clefW + W) / 2, L.staffTop - ls * 2);
     }
   }
   ctx.restore();
@@ -1423,7 +1532,7 @@ function drawStaff(now) {
   ctx.save();
   ctx.shadowColor = C.felt; ctx.shadowBlur = 4 + g.feltGlow * 18;
   ctx.fillStyle = alpha(C.felt, 0.85);
-  ctx.fillRect(L.cursorX - 1.5, L.tTop - ls * 2.5, 3, L.bBot - L.tTop + ls * 5);
+  ctx.fillRect(L.cursorX - 1.5, L.staffTop - ls * 2.5, 3, L.bBot - L.staffTop + ls * 5);
   ctx.restore();
   // Lo que estás tocando, dibujado en el cursor
   for (const m of held) {
@@ -1442,10 +1551,144 @@ function drawStaff(now) {
   }
 }
 
+/* ---------- Violonchelo: diapasón con digitación y afinador ---------- */
+const CELLO_STRINGS = [57, 50, 43, 36];   // La3, Re3, Sol2, Do2 (de arriba abajo, como se lee una tablatura)
+const FINGER = ['0', '1', '1', '2', '3', '4'];
+function celloPos(m) {
+  for (let i = 0; i < CELLO_STRINGS.length; i++) {
+    const open = CELLO_STRINGS[i];
+    if (m >= open && m - open <= 5) return { i, open, off: m - open };
+  }
+  if (m > 62) return { i: 0, open: 57, off: m - 57 };   // por encima de Re4: posiciones altas en la cuerda La
+  return null;
+}
+function celloGeom() {
+  const top = L.hitY, h = L.kh, W = L.W;
+  const x0 = 78, x1 = Math.max(x0 + 220, W * 0.62);
+  const y0 = top + 46, y1 = top + h - 20;
+  const seg = (x1 - x0) / 7.5;
+  return { top, h, x0, x1, seg, sy: i => y0 + i * (y1 - y0) / 3, px: off => off === 0 ? x0 - 16 : x0 + (Math.min(off, 7.4) - 0.5) * seg };
+}
+function celloTarget() {
+  const g = game;
+  if (g.free || !g.notes) return null;
+  if (g.mode === 'wait') { const gr = g.groups[g.gi]; return gr ? gr.notes[0] : null; }
+  return g.notes.find(n => n.state === 'pending' && n.t >= g.t - 0.15) || null;
+}
+function drawCelloPanel(now) {
+  const g = game, G = celloGeom(), W = L.W;
+  const bg = ctx.createLinearGradient(0, G.top, 0, G.top + G.h);
+  bg.addColorStop(0, C.wood2); bg.addColorStop(1, C.wood);
+  ctx.fillStyle = bg; ctx.fillRect(0, G.top, W, G.h);
+  ctx.fillStyle = C.felt; ctx.fillRect(0, G.top - 5, W, 5);
+
+  const target = celloTarget();
+  const tp = target ? celloPos(target.midi) : null;
+  // indicación de cuerda y dedo
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  ctx.font = '700 15px ' + FONT; ctx.fillStyle = C.text;
+  let info = g.free ? 'Toca una nota: la verás en el pentagrama y en el afinador' : 'Escuchando…';
+  if (target && tp) {
+    const cuerda = 'Cuerda ' + noteName(tp.open);
+    info = tp.off === 0 ? cuerda + ' al aire' : tp.off > 5 ? cuerda + ' · posición alta' : cuerda + ' · dedo ' + FINGER[tp.off];
+    if (settings.showNames) info = noteName(target.midi, true) + ' — ' + info;
+  } else if (target) info = 'Nota más grave que el Do2: no entra en el violonchelo';
+  ctx.fillText(info, 16, G.top + 26);
+
+  // cejuela y guías de posición
+  ctx.fillStyle = C.ivory; ctx.fillRect(G.x0 - 4, G.sy(0) - 10, 4, G.sy(3) - G.sy(0) + 20);
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let k = 1; k <= 7; k++) { const x = Math.round(G.x0 + k * G.seg) + 0.5; ctx.moveTo(x, G.sy(0) - 8); ctx.lineTo(x, G.sy(3) + 8); }
+  ctx.stroke();
+  // cuerdas
+  CELLO_STRINGS.forEach((open, i) => {
+    const y = G.sy(i), on = tp && tp.i === i;
+    ctx.save();
+    if (on) { ctx.shadowColor = C.rh; ctx.shadowBlur = 10; }
+    ctx.strokeStyle = on ? C.rh : alpha(C.string, 0.85);
+    ctx.lineWidth = 1.4 + i * 0.9;
+    ctx.beginPath(); ctx.moveTo(G.x0, y); ctx.lineTo(W - 12, y); ctx.stroke();
+    ctx.restore();
+    ctx.font = (on ? '700 ' : '400 ') + '14px ' + FONT; ctx.fillStyle = on ? C.rh : C.muted; ctx.textAlign = 'left';
+    ctx.fillText(noteName(open), 14, y + 5);
+  });
+  // lo que suena ahora (micrófono, toque o teclado)
+  for (const m of held) {
+    const pos = celloPos(m); if (!pos) continue;
+    const kc = g.keyColor.get(m);
+    const ok = kc ? kc !== C.bad && kc !== C.muted : target && (target.midi === m || Math.abs(target.midi - m) === 12);
+    ctx.beginPath(); ctx.arc(G.px(pos.off), G.sy(pos.i), 10, 0, Math.PI * 2);
+    ctx.lineWidth = 3; ctx.strokeStyle = ok ? C.good : C.bad; ctx.stroke();
+  }
+  // dónde poner el dedo
+  if (tp) {
+    const x = G.px(tp.off), y = G.sy(tp.i), r = Math.min(15, G.seg * 0.34);
+    const pulse = g.waiting ? 0.5 + 0.5 * Math.sin(now / 180) : 0;
+    ctx.save();
+    ctx.shadowColor = C.rh; ctx.shadowBlur = 6 + pulse * 14;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
+    if (tp.off === 0) { ctx.lineWidth = 3; ctx.strokeStyle = C.rh; ctx.stroke(); }
+    else { ctx.fillStyle = C.rh; ctx.fill(); }
+    ctx.restore();
+    ctx.font = '800 ' + Math.round(r * 1.1) + 'px ' + FONT; ctx.textAlign = 'center';
+    ctx.fillStyle = tp.off === 0 ? C.rh : '#2a1a00';
+    ctx.fillText(tp.off > 5 ? '↑' : FINGER[tp.off], x, y + r * 0.4);
+  }
+
+  // afinador
+  const ax = G.x1 + 28, aw = W - ax - 18;
+  if (aw < 130) return;
+  ctx.textAlign = 'left';
+  ctx.font = '700 11px ' + FONT; ctx.fillStyle = C.muted;
+  ctx.fillText('AFINADOR', ax, G.top + 26);
+  if (!mic.on) {
+    ctx.font = '700 15px ' + FONT; ctx.fillStyle = C.text;
+    ctx.fillText(mic.denied ? 'Micrófono sin permiso' : 'Activando micrófono…', ax, G.top + 56);
+    ctx.font = '400 13px ' + FONT; ctx.fillStyle = C.muted;
+    if (mic.denied) ctx.fillText('Permítelo en los ajustes del sitio', ax, G.top + 76);
+    return;
+  }
+  const has = mic.freq != null;
+  ctx.font = '800 30px ' + FONT; ctx.fillStyle = has ? C.text : alpha(C.text, 0.35);
+  ctx.fillText(has ? noteName(mic.detected, true) : '—', ax, G.top + 62);
+  if (has) { ctx.font = '400 12px ' + FONT; ctx.fillStyle = C.muted; ctx.fillText(mic.freq.toFixed(1) + ' Hz', ax + 96, G.top + 62); }
+  // escala de -50 a +50 cents
+  const my = G.top + 92, mx = ax + aw / 2, half = aw / 2 - 6;
+  ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fillRect(ax, my - 7, aw, 14);
+  ctx.fillStyle = alpha(C.good, 0.28); ctx.fillRect(mx - half * 0.2, my - 7, half * 0.4, 14);
+  ctx.fillStyle = C.muted;
+  for (const c of [-50, -25, 0, 25, 50]) ctx.fillRect(mx + c / 50 * half - 0.5, my + 9, 1, c === 0 ? 7 : 4);
+  if (has) {
+    const c = Math.max(-50, Math.min(50, mic.cents)), ac = Math.abs(c);
+    const col = ac <= 10 ? C.good : ac <= 25 ? C.rh : C.bad;
+    ctx.fillStyle = col; ctx.fillRect(mx + c / 50 * half - 2, my - 11, 4, 22);
+    ctx.font = '700 13px ' + FONT; ctx.fillStyle = col;
+    const word = ac <= 10 ? 'afinado' : (c > 0 ? (ac <= 25 ? 'un poco alto' : 'alto') : (ac <= 25 ? 'un poco bajo' : 'bajo'));
+    ctx.fillText(word + ' · ' + (c > 0 ? '+' : '') + Math.round(c) + ' cents', ax, my + 34);
+  } else {
+    ctx.font = '400 13px ' + FONT; ctx.fillStyle = C.muted;
+    ctx.fillText('Toca una nota cerca de la tablet', ax, my + 34);
+  }
+  // nivel de entrada
+  ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fillRect(ax, my + 46, aw, 4);
+  ctx.fillStyle = C.lh; ctx.fillRect(ax, my + 46, Math.min(aw, aw * mic.level * 8), 4);
+}
+function hitCello(e) {
+  const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  if (y < L.hitY) return null;
+  const G = celloGeom();
+  let i = 0, best = Infinity;
+  for (let k = 0; k < 4; k++) { const dd = Math.abs(G.sy(k) - y); if (dd < best) { best = dd; i = k; } }
+  if (x > G.x1 + 10) return null;
+  const off = x < G.x0 ? 0 : Math.max(1, Math.min(7, Math.floor((x - G.x0) / G.seg) + 1));
+  return CELLO_STRINGS[i] + off;
+}
+
 function draw(now) {
   const { W, H, hitY } = L;
   ctx.clearRect(0, 0, W, H);
-  const staffView = settings.view === 'staff';
+  const staffView = settings.view === 'staff' || game.cello;
   const g = game;
   if (staffView) drawStaff(now);
   else {
@@ -1532,6 +1775,8 @@ function draw(now) {
   // Tira de fieltro rojo (línea de acierto)
   g.feltGlow = Math.max(0, g.feltGlow - 0.04);
   }
+  if (g.cello) drawCelloPanel(now);
+  else {
   ctx.fillStyle = C.felt;
   ctx.shadowColor = C.felt; ctx.shadowBlur = staffView ? 4 : 6 + g.feltGlow * 22;
   ctx.fillRect(0, hitY - 5, W, 5);
@@ -1605,6 +1850,7 @@ function draw(now) {
       ctx.fillText(lab, k.x + k.w / 2, top + k.h - 8);
     }
   }
+  }
 
   // Partículas y textos
   const dt = 1 / 60;
@@ -1621,7 +1867,7 @@ function draw(now) {
     ctx.font = `700 15px ${FONT}`;
     const fc = staffView ? inkify(f.color) : f.color;
     ctx.fillStyle = alpha(fc.startsWith('#') ? fc : '#ffffff', f.life);
-    if (staffView) ctx.fillText(f.text, L.cursorX + L.ls * 3, L.tTop - L.ls * 2.6 + (1 - f.life) * -10);
+    if (staffView) ctx.fillText(f.text, L.cursorX + L.ls * 3, L.staffTop - L.ls * 2.6 + (1 - f.life) * -10);
     else ctx.fillText(f.text, Math.min(Math.max(f.x, 50), W - 50), f.y);
   }
 
@@ -1632,7 +1878,7 @@ function draw(now) {
     if (g.t < firstT && remain < 3 && remain > 0) {
       ctx.font = `800 ${Math.min(96, hitY * 0.3)}px ${FONT}`;
       ctx.fillStyle = alpha(staffView ? C.ink : C.text, staffView ? 0.35 : 0.85);
-      ctx.fillText(String(Math.ceil(remain)), staffView ? (L.cursorX + W) / 2 : W / 2, staffView ? (L.tBot + L.bTop) / 2 + hitY * 0.1 : hitY * 0.45);
+      ctx.fillText(String(Math.ceil(remain)), staffView ? (L.cursorX + W) / 2 : W / 2, staffView ? (L.single ? L.bTop + 2 * L.ls : (L.tBot + L.bTop) / 2 + hitY * 0.1) : hitY * 0.45);
     }
     if (g.mode === 'wait' && g.waiting) {
       const grp = g.groups[g.gi];
@@ -1707,8 +1953,9 @@ function hitKey(e) {
   return null;
 }
 const stillHeld = m => [...pointers.values()].includes(m);
+const hitAt = e => game.cello ? hitCello(e) : hitKey(e);
 cv.addEventListener('pointerdown', e => {
-  const m = hitKey(e); if (m == null) return;
+  const m = hitAt(e); if (m == null) return;
   e.preventDefault();
   cv.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, m);
@@ -1716,7 +1963,7 @@ cv.addEventListener('pointerdown', e => {
 });
 cv.addEventListener('pointermove', e => {
   if (!pointers.has(e.pointerId)) return;
-  const m = hitKey(e), old = pointers.get(e.pointerId);
+  const m = hitAt(e), old = pointers.get(e.pointerId);
   if (m == null || m === old) return;
   pointers.set(e.pointerId, m);
   if (!stillHeld(old)) noteOff(old);
@@ -1736,7 +1983,7 @@ function starSvg(on) {
   return `<svg class="${on ? 'on' : 'off'}" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.5L12 17.3l-5.9 3.2 1.3-6.5L2.5 9.4l6.6-.8z"/></svg>`;
 }
 function rollSvg(song) {
-  const notes = songNotes(song).filter(n => n.t < 9);
+  const notes = notesFor(song).filter(n => n.t < 9);
   const span = 9;
   const mn = Math.min(...notes.map(n => n.midi)) - 2, mx = Math.max(...notes.map(n => n.midi)) + 2;
   const H = 64, W = 300;
@@ -1750,6 +1997,7 @@ function rollSvg(song) {
 function renderHome() {
   let total = 0;
   const html = [];
+  const handsTxt = s => isCello() ? 'Melodía' : s.lh ? `<i style="background:${C.lh}"></i>Dos manos` : 'Mano derecha';
   if (imports.length) {
     html.push(`<div class="level"><div class="level-head"><h3>Tus canciones · <span>MIDI importados</span></h3></div><div class="grid">`);
     for (const s of imports) {
@@ -1758,15 +2006,16 @@ function renderHome() {
         ${rollSvg(s)}
         <div class="body"><h4>${esc(s.title)}</h4><span class="sub">${esc(s.sub)}</span>
           <div class="diffs">${chips}</div>
-          <div class="meta"><span class="hands"><i style="background:${C.rh}"></i>${s.lh ? `<i style="background:${C.lh}"></i>Dos manos` : 'Mano derecha'} · ♩ ${s.bpm}</span>
+          <div class="meta"><span class="hands"><i style="background:${C.rh}"></i>${handsTxt(s)} · ♩ ${s.bpm}</span>
           <span class="stars">${[0, 1, 2].map(i => starSvg(i < bestStars(s.id))).join('')}</span></div>
         </div></button>
         <button class="del" type="button" data-del="${s.id}" aria-label="Quitar ${esc(s.title)}">Quitar</button></div>`);
     }
     html.push('</div></div>');
   }
+  const visible = SONGS.filter(s => isCello() || !s.cello);
   for (const lvl of [1, 2, 3]) {
-    const songs = SONGS.filter(s => s.level === lvl);
+    const songs = visible.filter(s => s.level === lvl);
     const got = songs.reduce((a, s) => a + bestStars(s.id), 0);
     total += got;
     html.push(`<div class="level"><div class="level-head"><h3>Nivel ${lvl} · <span>${LEVELS[lvl]}</span></h3><span class="stat" style="color:var(--muted);font-size:.85rem">${got} / ${songs.length * 3} ★</span></div><div class="grid">`);
@@ -1777,7 +2026,7 @@ function renderHome() {
         ${rollSvg(s)}
         <div class="body"><h4>${s.title}</h4><span class="sub">${s.sub}</span>
           <div class="diffs">${chips}</div>
-          <div class="meta"><span class="hands"><i style="background:${C.rh}"></i>${s.lh ? `<i style="background:${C.lh}"></i>Dos manos` : 'Mano derecha'} · ♩ ${s.bpm}</span>
+          <div class="meta"><span class="hands"><i style="background:${C.rh}"></i>${handsTxt(s)} · ♩ ${s.bpm}</span>
           <span class="stars" aria-label="${p.stars} de 3 estrellas">${[0, 1, 2].map(i => starSvg(i < p.stars)).join('')}</span></div>
         </div></button>`);
     }
@@ -1785,8 +2034,8 @@ function renderHome() {
   }
   $('#levels').innerHTML = html.join('');
   $('#levels').style.display = 'grid'; $('#levels').style.gap = '28px';
-  $('#tallyNum').textContent = `${total} / ${SONGS.length * 3}`;
-  const next = SONGS.find(s => !bestStars(s.id)) || SONGS.find(s => bestStars(s.id) < 3);
+  $('#tallyNum').textContent = `${total} / ${visible.length * 3}`;
+  const next = visible.find(s => !bestStars(s.id)) || visible.find(s => bestStars(s.id) < 3);
   $('#nextBtn').hidden = !next;
   if (!next) { $('#nextTitle').textContent = '¡Todas las canciones con tres estrellas!'; $('#nextSub').textContent = 'Repite tus favoritas a más velocidad o improvisa en el piano libre.'; }
   if (next) {
@@ -1841,10 +2090,14 @@ function openSetup(song) {
   setupSong = song;
   $('#suTitle').textContent = song.title;
   $('#suSub').textContent = song.imported ? `${song.sub} · ♩ ${song.bpm}` : `${song.sub} · Nivel ${song.level} · ♩ ${song.bpm}`;
-  $('#handsField').hidden = !song.lh;
+  $('#handsField').hidden = !song.lh || isCello();
+  if (isCello() && !song.cello) {
+    const sh = celloShift(melodyOf(songNotes(song)));
+    if (sh < 0) $('#suSub').textContent += ' · melodía ' + (sh === -12 ? 'una octava' : sh === -24 ? 'dos octavas' : 'tres octavas') + ' más grave';
+  }
   const ids = { easy: 'Easy', normal: 'Normal', hard: 'Hard' };
   for (const d in ids) $('#ds' + ids[d]).textContent = '★'.repeat(diffStars(song.id, d)) + '☆'.repeat(3 - diffStars(song.id, d));
-  $('#dHardDesc').textContent = song.lh ? 'Ambas manos · 115%' : 'A 115%, más exigente';
+  $('#dHardDesc').textContent = song.lh && !isCello() ? 'Ambas manos · 115%' : 'A 115%, más exigente';
   const d = settings.diff && DIFFS[settings.diff] ? settings.diff : 'normal';
   $('#d' + ids[d]).checked = true;
   syncHands();
@@ -1852,7 +2105,7 @@ function openSetup(song) {
 }
 // En Difícil se tocan siempre las dos manos
 function syncHands() {
-  const hard = $('#dHard').checked && setupSong && setupSong.lh;
+  const hard = $('#dHard').checked && setupSong && setupSong.lh && !isCello();
   if (hard) $('#hB').checked = true;
   $('#hR').disabled = $('#hL').disabled = !!hard;
 }
@@ -1864,7 +2117,7 @@ $('#setupForm').addEventListener('submit', e => {
     const f = new FormData(e.target);
     const diff = f.get('diff') || 'normal';
     settings.diff = diff; save('tat-settings-v1', settings);
-    const opts = { mode: f.get('mode'), hands: !setupSong.lh ? 'R' : diff === 'hard' ? 'B' : f.get('hands'), speed: +$('#speed').value / 100, diff };
+    const opts = { mode: f.get('mode'), hands: !setupSong.lh || isCello() ? 'R' : diff === 'hard' ? 'B' : f.get('hands'), speed: +$('#speed').value / 100, diff };
     setTimeout(() => game.start(setupSong, opts), 0);
   }
 });
@@ -1916,6 +2169,19 @@ function setView(v) {
 $('#viewStaff').onclick = () => setView('staff');
 $('#viewFall').onclick = () => setView('fall');
 $('#viewBtn').onclick = () => setView(settings.view === 'staff' ? 'fall' : 'staff');
+function applyInstrument() {
+  $('#instPiano').setAttribute('aria-pressed', !isCello());
+  $('#instCello').setAttribute('aria-pressed', isCello());
+  $('#viewChip').hidden = isCello();
+  $('#celloHelp').hidden = !isCello();
+  $('#freeBtn').textContent = isCello() ? 'Práctica libre' : 'Piano libre';
+}
+function setInstrument(v) {
+  settings.instrument = v; save('tat-settings-v1', settings);
+  applyInstrument(); renderHome();
+}
+$('#instPiano').onclick = () => setInstrument('piano');
+$('#instCello').onclick = () => setInstrument('cello');
 function applyLabels() {
   $('#lblSolf').setAttribute('aria-pressed', settings.showNames && settings.labels !== 'letters');
   $('#lblLet').setAttribute('aria-pressed', settings.showNames && settings.labels === 'letters');
@@ -1934,6 +2200,7 @@ $('#micBtn').onclick = toggleMic;
 
 applyLabels();
 applyView();
+applyInstrument();
 renderHome();
 // App instalable y sin conexión (solo cuando se sirve por https o localhost)
 if ('serviceWorker' in navigator && window.isSecureContext && window.top === window && /^https?:$/.test(location.protocol)) {
