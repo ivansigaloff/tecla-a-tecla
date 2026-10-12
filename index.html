@@ -405,6 +405,9 @@ dialog::backdrop { background: rgb(10 8 24 / 0.7); backdrop-filter: blur(4px); }
     <button class="icon-btn" id="viewBtn" type="button" aria-label="Cambiar a notas que caen" title="Cambiar vista">
       <svg id="viewIcon" width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"></svg>
     </button>
+    <button class="icon-btn" id="guideBtn" type="button" aria-label="Sonido guía" title="Sonido guía" aria-pressed="true" hidden>
+      <svg id="guideIcon" width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"></svg>
+    </button>
     <button class="icon-btn" id="fsBtn" type="button" aria-label="Pantalla completa">
       <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
@@ -739,7 +742,7 @@ function load(key, fallback) {
   try { const v = JSON.parse(localStorage.getItem(key)); return v ?? fallback; } catch { return fallback; }
 }
 function save(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }
-const settings = Object.assign({ labels: 'solf', volume: 0.8, view: 'staff', showNames: true, instrument: 'piano' }, load('tat-settings-v1', {}));
+const settings = Object.assign({ labels: 'solf', volume: 0.8, view: 'staff', showNames: true, instrument: 'piano', guide: true }, load('tat-settings-v1', {}));
 const isCello = () => settings.instrument === 'cello';
 const progress = load('tat-progress-v1', {});
 const imports = load('tat-imports-v1', []);
@@ -824,6 +827,20 @@ function releaseVoice(v, when) {
   else { g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); }
   g.setTargetAtTime(0.0001, t, 0.07);
   v.oscs.forEach(o => { try { o.stop(t + 0.6); } catch {} });
+}
+let clickBuf = null;
+function playClick(accent) {
+  ensureAudio();
+  if (!clickBuf) {
+    clickBuf = actx.createBuffer(1, Math.floor(actx.sampleRate * 0.03), actx.sampleRate);
+    const d = clickBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3);
+  }
+  const t = actx.currentTime;
+  const src = actx.createBufferSource(); src.buffer = clickBuf;
+  const bp = actx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = accent ? 3400 : 2400; bp.Q.value = 1.2;
+  const g = actx.createGain(); g.gain.value = accent ? 0.9 : 0.55;
+  src.connect(bp); bp.connect(g); g.connect(master); src.start(t);
 }
 function playFor(midi, dur, vel = 0.65) {
   ensureAudio();
@@ -980,7 +997,8 @@ async function toggleFullscreen() {
 
 // Micrófono: detección de tono monofónica (YIN), sirve para piano y violonchelo
 const mic = { on: false, analyser: null, buf: null, stream: null, note: null, cand: null, candCount: 0, silent: 0,
-  peak: 0, dipped: false, level: 0, freq: null, detected: null, cents: 0, yin: null, denied: false };
+  peak: 0, dipped: false, level: 0, freq: null, detected: null, cents: 0, yin: null, denied: false, muteUntil: 0, stale: null };
+function muteMic(sec) { if (actx) mic.muteUntil = Math.max(mic.muteUntil, actx.currentTime + sec); }
 async function toggleMic() {
   const st = $('#micStatus');
   if (mic.on) {
@@ -1039,9 +1057,14 @@ function micTick() {
   mic.analyser.getFloatTimeDomainData(mic.buf);
   const { f, rms } = detectPitch(mic.buf, actx.sampleRate);
   mic.level = rms;
+  if (actx.currentTime < mic.muteUntil) {   // suena la guía: no es el alumno
+    mic.freq = null; mic.cand = null; mic.candCount = 0;
+    if (mic.note != null) { mic.stale = mic.note; noteOff(mic.note); mic.note = null; }
+    return;
+  }
   if (f < 58 || f > 2100) {
     mic.freq = null;
-    if (++mic.silent > 3 && mic.note != null) { noteOff(mic.note); mic.note = null; }
+    if (++mic.silent > 3) { mic.stale = null; if (mic.note != null) { noteOff(mic.note); mic.note = null; } }
     return;
   }
   mic.silent = 0;
@@ -1053,6 +1076,9 @@ function micTick() {
   if (mic.note !== m) {
     if (mic.note != null) noteOff(mic.note);
     mic.note = m; mic.peak = rms; mic.dipped = false;
+    // la nota que seguía sonando mientras hablaba la guía: espera a un golpe de arco nuevo
+    if (m === mic.stale) return;
+    mic.stale = null;
     noteOn(m, 0.8, 'mic');
     return;
   }
@@ -1102,6 +1128,8 @@ const game = {
     this.paused = false; this.ended = false; this.waiting = false;
     this.particles = []; this.floats = []; this.freeBars = [];
     this.keyColor.clear(); this.autoUntil.clear();
+    this.guidedGi = -1; this.guideAgainAt = 0;
+    $('#guideBtn').hidden = !this.cello || this.free || this.mode === 'listen';
     this.stats = { hit: 0, perfect: 0, good: 0, miss: 0, wrong: 0, streak: 0, best: 0, points: 0 };
     $('#pauseOv').hidden = true; $('#resultOv').hidden = true;
     if (this.free) {
@@ -1184,6 +1212,7 @@ const game = {
       if (g && next >= g.t) { next = g.t; this.waiting = true; }
     }
     this.t = next;
+    if (mic.on && settings.guide && actx) this.guideTick(prev);
     // Notas automáticas (la otra mano, o todas en modo Escuchar)
     while (this.ai < this.auto.length) {
       const n = this.auto[this.ai];
@@ -1208,6 +1237,33 @@ const game = {
       }
     }
     if (this.t > this.endT + 0.8) this.finish();
+  },
+
+  // Con el micrófono abierto la app no puede sonar a la vez que el alumno (se oiría a sí misma):
+  // en Aprender canta la nota que viene antes de que la toques; en Desafío marca el pulso con un clic
+  guideTick(prev) {
+    const now = actx.currentTime;
+    if (this.mode === 'wait' && this.waiting) {
+      const g = this.groups[this.gi];
+      if (!g) return;
+      if (this.guidedGi !== this.gi) {
+        this.guidedGi = this.gi;
+        const pg = this.groups[this.gi - 1];
+        const same = pg && pg.notes[0].midi === g.notes[0].midi && g.t - pg.t < 2.5;   // notas repetidas: ya la oíste
+        if (same) this.guideAgainAt = now + 5; else this.playGuide(g);
+      } else if (this.guideAgainAt && now >= this.guideAgainAt && mic.note == null) this.playGuide(g);
+    }
+    if (this.mode === 'play' && this.t < this.endT) {
+      const k0 = Math.floor(prev / this.spb + 1e-6), k1 = Math.floor(this.t / this.spb + 1e-6);
+      if (k1 > k0) playClick(((k1 - (this.song.pickup || 0)) % (this.song.meter || 4) + (this.song.meter || 4)) % (this.song.meter || 4) === 0);
+    }
+  },
+  playGuide(g) {
+    const d = Math.min(0.75, Math.max(0.45, g.notes[0].d / this.speed));
+    g.notes.forEach(n => playFor(n.midi, d, 0.6));
+    muteMic(d + 0.35);
+    this.guideAgainAt = actx.currentTime + d + 5;   // si pasan 5 s sin que suene nada, la repite
+    this.float('Escucha', g.notes[0], C.muted);
   },
 
   onNoteOn(midi, src) {
@@ -1237,6 +1293,7 @@ const game = {
       } else {
         s.wrong++; s.streak = 0;
         this.keyColor.set(midi, C.bad);
+        if (src === 'mic' && actx) this.guideAgainAt = actx.currentTime + 0.8;
       }
     } else {
       let best = null, bestErr = Infinity;
@@ -2186,6 +2243,15 @@ function setView(v) {
 }
 $('#viewStaff').onclick = () => setView('staff');
 $('#viewFall').onclick = () => setView('fall');
+function applyGuide() {
+  $('#guideBtn').setAttribute('aria-pressed', settings.guide);
+  $('#guideBtn').title = settings.guide ? 'Sonido guía: activado' : 'Sonido guía: desactivado';
+  $('#guideIcon').innerHTML = '<path d="M3 7h3l4-3v10l-4-3H3z" fill="currentColor"/>' + (settings.guide
+    ? '<path d="M12.5 6.5a3.5 3.5 0 0 1 0 5M14.5 4.5a6.4 6.4 0 0 1 0 9" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>'
+    : '<path d="M12.5 7l4 4M16.5 7l-4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>');
+}
+$('#guideBtn').onclick = () => { settings.guide = !settings.guide; save('tat-settings-v1', settings); applyGuide(); };
+applyGuide();
 $('#viewBtn').onclick = () => setView(settings.view === 'staff' ? 'fall' : 'staff');
 function applyInstrument() {
   $('#instPiano').setAttribute('aria-pressed', !isCello());
