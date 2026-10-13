@@ -551,6 +551,18 @@ const SONGS = [
   { id: 'navidad', title: 'Navidad, Navidad', sub: 'Jingle Bells · James Lord Pierpont', level: 2, bpm: 120, meter: 4,
     rh: 'E4 E4 E4:2 E4 E4 E4:2 E4 G4 C4:1.5 D4:.5 E4:4 F4 F4 F4:1.5 F4:.5 F4 E4 E4 E4:.5 E4:.5 E4 D4 D4 E4 D4:2 G4:2 E4 E4 E4:2 E4 E4 E4:2 E4 G4 C4:1.5 D4:.5 E4:4 F4 F4 F4:1.5 F4:.5 F4 E4 E4 E4:.5 E4:.5 G4 G4 F4 D4 C4:4',
     lh: 'C3:4 C3:4 C3:4 C3:4 F2:4 C3:4 D3:4 G2:4 C3:4 C3:4 C3:4 C3:4 F2:4 C3:4 G2:4 C3:4' },
+  { id: 'otono', title: 'Otoño', sub: 'Antonio Vivaldi · Las cuatro estaciones · con dinámicas', level: 2, bpm: 88, meter: 2, pickup: 0.5,
+    // 2/4 en Sol mayor, alegre. Anacrusa de una corchea; mf, mp en la vuelta, crescendo hacia el f final
+    rh: [
+      '!mf G4:.5@1', 'B4:.5 B4:.5 B4:.5 A4:.25 G4:.25', 'D5:1.5 D5:.25 C5:.25', 'B4:.5 B4:.5 B4:.5 A4:.25 G4:.25', 'D5:1.5 D5:.25 C5:.25', 'B4:.5 C5:.25 D5:.25 C5:.5 B4:.5', 'A4:.5@2 G4:.5@1 R:.5 !mp G4:.5@1',
+      'B4:.5 B4:.5 B4:.5 A4:.25 G4:.25', 'D5:1.5 D5:.25 C5:.25', 'B4:.5 B4:.5 B4:.5 A4:.25 G4:.25', 'D5:1.5 D5:.25 C5:.25', 'B4:.5 C5:.25 D5:.25 C5:.5 B4:.5', 'A4:1 R:.5 D5:.5@2',
+      'D5:.5 C5:.25 B4:.25 C5:.5 D5:.5', 'E5:.5 D5:.5~ D5:.5 B4:.5', 'D5:.5 C5:.25 B4:.25 C5:.5 D5:.5', '!< E5:.5 D5:.5~ D5:.5 B4:.5', 'E5:.5 D5:.5~ D5:.5 C5:.5', '!f B4:.5 A4:.25 G4:.25 A4:1', 'G4:1.5',
+    ].join(' '),
+    lh: [
+      'R:.5', 'G3+D4:2', 'B3 G3', 'G3+D4:2', 'B3 G3', 'D4 A3:.5@4 G3:.5', 'D4 D4:.5 R:.5',
+      'G3+D4:2', 'B3 G3', 'G3+D4:2', 'B3 G3', 'D4 A3:.5@4 G3:.5', 'D4:.5 D4:.5 D4:.5 R:.5',
+      'B3:.5 A3:.25 G3:.25 A3:.5 B3:.5', 'C4:.5 B3:.5~ B3:.5 G3:.5', 'B3:.5 A3:.25 G3:.25 A3:.5 B3:.5', 'C4:.5 B3:.5~ B3:.5 G3:.5', 'C4:.5 B3:.5~ B3:.5 A3:.5', 'G3 D4', 'G3+B3:1.5',
+    ].join(' ') },
   { id: 'elisa', title: 'Para Elisa', sub: 'Ludwig van Beethoven · tema inicial', level: 3, bpm: 140, meter: 3, pickup: 1,
     rh: 'E5:.5 D#5:.5 E5:.5 D#5:.5 E5:.5 B4:.5 D5:.5 C5:.5 A4:1 R:.5 C4:.5 E4:.5 A4:.5 B4:1 R:.5 E4:.5 G#4:.5 B4:.5 C5:1 R:.5 E4:.5 E5:.5 D#5:.5 E5:.5 D#5:.5 E5:.5 B4:.5 D5:.5 C5:.5 A4:1 R:.5 C4:.5 E4:.5 A4:.5 B4:1 R:.5 E4:.5 C5:.5 B4:.5 A4:2',
     lh: 'R:4 A2:.5 E3:.5 A3:.5 R:1.5 E2:.5 E3:.5 G#3:.5 R:1.5 A2:.5 E3:.5 A3:.5 R:4.5 A2:.5 E3:.5 A3:.5 R:1.5 E2:.5 E3:.5 G#3:.5 R:1.5 A2:.5 E3:.5 A3:1' },
@@ -579,18 +591,68 @@ function parseNote(s) {
   if (!r) throw new Error('Nota inválida: ' + s);
   return 12 * (+r[3] + 1) + PC[r[1]] + (r[2] === '#' ? 1 : r[2] === 'b' ? -1 : 0);
 }
-function parseTrack(str, hand, bpm) {
+// Pistas: NOTA:duración (en pulsos), R silencio, + acorde, ~ ligada a la siguiente, @dedo (@5,1 en acordes).
+// Marcas con !: !pp !p !mp !mf !f !ff, reguladores !< !> o !cresc !dim (acaban en !. o en la dinámica siguiente),
+// pedal !ped (bajar o volver a pisar) y !* (levantar)
+const DYN = { pp: 0.45, p: 0.6, mp: 0.8, mf: 1, f: 1.2, ff: 1.38 };
+function parseTrack(str, hand, bpm, marks = []) {
   const spb = 60 / bpm, out = [];
   let beat = 0;
+  let tied = new Map();   // notas del token anterior que siguen sonando por una ligadura
   for (const tok of str.trim().split(/\s+/)) {
-    const [p, d] = tok.split(':');
+    if (tok[0] === '!') { marks.push({ t: beat * spb, kind: tok.slice(1), hand }); continue; }
+    const [body, fing] = tok.split('@');
+    const tie = body.endsWith('~');
+    const [p, d] = (tie ? body.slice(0, -1) : body).split(':');
     const dur = d ? parseFloat(d) : 1;
-    if (p !== 'R') for (const n of p.split('+')) {
-      out.push({ midi: parseNote(n), t: beat * spb, d: Math.max(0.08, dur * spb - 0.05), hand });
-    }
+    const fings = fing ? fing.split(',') : [], next = new Map();
+    if (p !== 'R') p.split('+').forEach((nm, i) => {
+      const midi = parseNote(nm), prev = tied.get(midi);
+      if (prev) { prev.d += dur * spb; if (tie) next.set(midi, prev); return; }   // ligadura: se alarga, no se vuelve a tocar
+      const n = { midi, t: beat * spb, d: Math.max(0.08, dur * spb - 0.05), hand };
+      if (fings[i]) n.fing = fings[i];
+      out.push(n);
+      if (tie) next.set(midi, n);
+    });
+    tied = next;
     beat += dur;
   }
   return out;
+}
+// Marcas de la partitura en segundos: dinámicas, reguladores y tramos de pedal
+function songMarks(song, diff = 'normal') {
+  const M = { dyn: [], hair: [], ped: [] };
+  if (song.imported) return M;
+  const bpm = song.bpm * DIFFS[diff].tempo, ms = [];
+  parseTrack(song.rh, 'R', bpm, ms);
+  if (song.lh) parseTrack(song.lh, 'L', bpm, ms);
+  ms.sort((a, b) => a.t - b.t);
+  const HAIR = { '<': [true, false], '>': [false, false], cresc: [true, true], dim: [false, true] };
+  let level = 1, down = null;
+  ms.forEach((m, i) => {
+    if (DYN[m.kind]) { M.dyn.push({ t: m.t, kind: m.kind }); level = DYN[m.kind]; }
+    else if (HAIR[m.kind]) {
+      const [up, text] = HAIR[m.kind];
+      const end = ms.slice(i + 1).find(x => x.kind === '.' || DYN[x.kind] || HAIR[x.kind]);
+      const to = end && DYN[end.kind] ? DYN[end.kind] : level * (up ? 1.25 : 0.8);
+      M.hair.push({ t0: m.t, t1: end ? end.t : Infinity, up, text, from: level, to, toDyn: !!(end && DYN[end.kind]) });
+    } else if (m.kind === 'ped') { if (down != null) M.ped.push([down, m.t]); down = m.t; }
+    else if (m.kind === '*' && down != null) { M.ped.push([down, m.t]); down = null; }
+  });
+  if (down != null) M.ped.push([down, Infinity]);
+  return M;
+}
+// Cada nota recibe su volumen (1 = mf) y, con el pedal pisado, hasta cuándo sigue sonando
+function applyMarks(notes, M) {
+  const levelAt = t => { let v = 1; for (const d of M.dyn) if (d.t <= t + 1e-6) v = DYN[d.kind]; return v; };
+  for (const n of notes) {
+    let v = levelAt(n.t);
+    const h = M.hair.find(h => n.t >= h.t0 - 1e-6 && n.t < h.t1 - 1e-6);
+    if (h) v = isFinite(h.t1) ? h.from + (h.to - h.from) * (n.t - h.t0) / (h.t1 - h.t0) : h.to;
+    n.vel = v;
+    const pd = M.ped.find(([a, b]) => n.t >= a - 1e-6 && n.t < b - 1e-6);
+    if (pd) n.ped = pd[1];
+  }
 }
 function songNotes(song, diff = 'normal') {
   const bpm = song.bpm * DIFFS[diff].tempo;
@@ -602,6 +664,7 @@ function songNotes(song, diff = 'normal') {
   }
   let n = parseTrack(song.rh, 'R', bpm);
   if (song.lh) n.push(...parseTrack(song.lh, 'L', bpm));
+  applyMarks(n, songMarks(song, diff));
   if (diff === 'easy') n = simplify(n, song, 60 / bpm);
   return n.sort((a, b) => a.t - b.t || a.midi - b.midi);
 }
@@ -1146,6 +1209,7 @@ const game = {
     } else {
       const hands = this.hands;
       this.win = DIFFS[this.diff].win;   // ventana de acierto en Desafío (segundos reales)
+      this.marks = songMarks(song, this.diff);
       this.notes = notesFor(song, this.diff).map(n => ({ ...n, state: 'pending', active: this.mode !== 'listen' && (hands === 'B' || n.hand === hands || !song.lh) }));
       this.act = this.notes.filter(n => n.active);
       this.auto = this.notes.filter(n => !n.active);
@@ -1221,8 +1285,8 @@ const game = {
       const n = this.auto[this.ai];
       if (n.t > this.t || (this.waiting && n.t >= this.t - 1e-4)) break;
       if (n.t >= prev - 0.25) {
-        const realDur = n.d / this.speed;
-        if (!mic.on || this.mode === 'listen') playFor(n.midi, realDur, this.mode === 'listen' ? 0.7 : 0.5);
+        const realDur = n.d / this.speed, heard = (n.ped && isFinite(n.ped) ? Math.max(n.d, n.ped - n.t) : n.d) / this.speed;
+        if (!mic.on || this.mode === 'listen') playFor(n.midi, heard, (this.mode === 'listen' ? 0.62 : 0.45) * (n.vel || 1));
         this.autoUntil.set(n.midi, { until: now + realDur * 1000, hand: n.hand });
         if (this.mode === 'listen') n.state = 'hit';
       }
@@ -1259,7 +1323,7 @@ const game = {
     if (this.mode === 'play' && !mic.on) {
       while (this.gpi < this.act.length && this.act[this.gpi].t <= this.t) {
         const n = this.act[this.gpi++];
-        if (n.t >= prev - 0.25) playFor(n.midi, n.d / this.speed, 0.3);
+        if (n.t >= prev - 0.25) playFor(n.midi, n.d / this.speed, 0.3 * (n.vel || 1));
       }
     } else if (this.mode === 'play' && this.t < this.endT) {
       const k0 = Math.floor(prev / this.spb + 1e-6), k1 = Math.floor(this.t / this.spb + 1e-6);
@@ -1268,7 +1332,7 @@ const game = {
   },
   playGuide(g) {
     const d = Math.min(0.75, Math.max(0.45, g.notes[0].d / this.speed));
-    g.notes.forEach(n => playFor(n.midi, d, 0.6));
+    g.notes.forEach(n => playFor(n.midi, d, 0.55 * (n.vel || 1)));
     muteMic(d + 0.35);
     this.guideAgainAt = actx.currentTime + d + 5;   // si pasan 5 s sin que suene nada, la repite
     this.float('Escucha', g.notes[0], C.muted);
@@ -1480,6 +1544,55 @@ function notehead(x, y, hollow, color) {
   else { ctx.fillStyle = color; ctx.fill(); }
   ctx.restore();
 }
+// Dinámicas y reguladores entre los pentagramas; el pedal, debajo del de la izquierda
+const DYN_GLYPH = { p: '\u{1D18F}', m: '\u{1D190}', f: '\u{1D191}' };
+function dynText(kind, x, y, fade) {
+  const ls = L.ls;
+  ctx.fillStyle = alpha(C.ink, 0.9 * fade); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  if (musicFontReady) { ctx.font = (ls * 3.2) + 'px ' + MUSIC_FONT; ctx.fillText([...kind].map(c => DYN_GLYPH[c]).join(''), x, y); }
+  else { ctx.font = 'italic 700 ' + (ls * 1.6) + 'px Georgia, "Times New Roman", serif'; ctx.fillText(kind, x, y); }
+  ctx.textBaseline = 'alphabetic';
+}
+function drawMarks(xOf) {
+  const M = game.marks, ls = L.ls, W = L.W;
+  if (!M) return;
+  const y = L.single ? L.bBot + ls * 2.4 : L.tBot + ls * 2.3;   // algo arriba del centro: debajo asoman las notas con líneas adicionales
+  const fadeAt = x => Math.max(0, Math.min(1, (x - L.clefW) / (ls * 3)));
+  for (const d of M.dyn) {
+    const x = xOf(d.t);
+    if (x > L.clefW - ls * 3 && x < W + ls * 3) dynText(d.kind, x + ls * 0.8, y, fadeAt(x));   // a la derecha de las plicas hacia abajo
+  }
+  ctx.lineWidth = Math.max(1, ls * 0.11);
+  for (const h of M.hair) {
+    const dynAt = t => M.dyn.some(d => Math.abs(d.t - t) < 1e-6);
+    const x0 = xOf(h.t0) + (dynAt(h.t0) ? ls * 1.8 : -ls * 0.4);
+    const x1 = isFinite(h.t1) ? xOf(h.t1) - (dynAt(h.t1) ? ls * 1.8 : ls * 0.4) : x0 + ls * 10;
+    if (x1 < L.clefW || x0 > W || x1 <= x0) continue;
+    ctx.strokeStyle = alpha(C.ink, 0.85 * fadeAt(Math.max(x0, x1)));
+    if (h.text) {
+      ctx.fillStyle = ctx.strokeStyle; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.font = 'italic ' + (ls * 1.25) + 'px Georgia, "Times New Roman", serif';
+      const label = h.up ? 'cresc.' : 'dim.', tw = ctx.measureText(label).width;
+      ctx.fillText(label, x0, y); ctx.textBaseline = 'alphabetic';
+      ctx.setLineDash([ls * 0.5, ls * 0.5]); ctx.beginPath(); ctx.moveTo(x0 + tw + ls * 0.4, y); ctx.lineTo(x1, y); ctx.stroke(); ctx.setLineDash([]);
+    } else {
+      const o = ls * 0.5, a = h.up ? x0 : x1, b = h.up ? x1 : x0;   // a: el vértice
+      ctx.beginPath(); ctx.moveTo(b, y - o); ctx.lineTo(a, y); ctx.lineTo(b, y + o); ctx.stroke();
+    }
+  }
+  if (L.single) return;
+  const py = L.bBot + ls * 3.4;
+  for (const [a, b] of M.ped) {
+    const x0 = xOf(a), x1 = isFinite(b) ? xOf(b) - ls * 0.3 : W + ls;
+    if (x1 < L.clefW || x0 > W) continue;
+    const ink = alpha(C.ink, 0.85 * fadeAt(x1));
+    ctx.fillStyle = ink; ctx.strokeStyle = ink; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.font = 'italic 700 ' + (ls * 1.15) + 'px Georgia, "Times New Roman", serif';
+    ctx.fillText('Ped.', x0 - ls * 0.3, py);
+    const tw = ctx.measureText('Ped.').width;
+    ctx.beginPath(); ctx.moveTo(x0 + tw, py - ls * 0.3); ctx.lineTo(x1, py - ls * 0.3); ctx.lineTo(x1, py - ls * 1.2); ctx.stroke();
+  }
+}
 function drawStaff(now) {
   const g = game, { W, hitY, ls } = L;
   const top = L.paperTop, bottom = Math.min(hitY - 6, L.bBot + 5 * ls);
@@ -1583,6 +1696,13 @@ function drawStaff(now) {
           ctx.font = (ls * 1.6) + 'px ' + FONT; ctx.textAlign = 'center'; ctx.fillStyle = color;
           ctx.fillText('♯', x - ls * 1.35, y + ls * 0.55);
         }
+        // digitación: la derecha encima del pentagrama, la izquierda debajo
+        if (n.fing && !L.single && fade > 0.3) {
+          ctx.font = '700 ' + Math.max(9, ls * 0.95) + 'px ' + FONT; ctx.textAlign = 'center';
+          ctx.fillStyle = alpha(C.ink, 0.9 * fade);
+          const fy = ch.staff === 'treble' ? Math.min(L.tTop - ls * 1.6, y - ls * 1.2) : Math.max(L.bBot + ls * 1.9, y + ls * 2.2);
+          ctx.fillText(n.fing, x, fy);
+        }
         if (settings.showNames && (n.active || g.mode === 'listen') && fade > 0.3) {
           ctx.font = '700 ' + Math.max(9, ls * 0.72) + 'px ' + FONT; ctx.textAlign = 'center';
           ctx.fillStyle = alpha(n.hand === 'L' ? C.lhInk : C.rhInk, fade);
@@ -1590,6 +1710,7 @@ function drawStaff(now) {
         }
       }
     }
+    drawMarks(xOf);
   } else {
     // Piano libre: lo que tocas aparece en el cursor y se desliza hacia la izquierda
     g.freeBars = g.freeBars.filter(b => L.cursorX - (now - b.start) / 1000 * pps > L.clefW - ls * 2);
